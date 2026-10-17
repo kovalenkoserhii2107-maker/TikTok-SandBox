@@ -598,7 +598,7 @@ export const WORLDS = [
   { id: 'city', name: 'Город', desc: 'Улица, дома, фонари', gravity: 9.8, drawBackground: (r, t) => drawCity(r, t, false), dust: '#a8a49c', debris: ['#5d5f63', '#7a7c80'], thumb: ['#3f86d8', '#cfe9ff', '#46494f'] },
   { id: 'night', name: 'Ночной город', desc: 'Огни окон и фонарей', gravity: 9.8, drawBackground: (r, t) => drawCity(r, t, true), ambient: '#5a6aa0', drawLights: cityLights, dust: '#77736c', debris: ['#3a3b40', '#55565c'], thumb: ['#060b1a', '#3a3f6e', '#24252a'] },
   { id: 'desert', name: 'Пустыня', desc: 'Закат, кактусы, дюны', gravity: 9.8, drawBackground: drawDesert, ambient: '#ffe6cc', dust: '#d9b98a', debris: ['#c99a62', '#a67a48'], thumb: ['#c9667a', '#ffd38a', '#e6bb83'] },
-  { id: 'moon', name: 'Луна', desc: 'Низкая гравитация 1.6 м/с²', gravity: 1.62, drawBackground: drawMoon, dust: '#a3a5aa', debris: ['#7c7e83', '#5e6065'], thumb: ['#000000', '#0d0f16', '#8f9196'] },
+  { id: 'moon', name: 'Луна', desc: 'Гравитация 1.6 м/с², огонь быстро гаснет', gravity: 1.62, noAir: true, drawBackground: drawMoon, dust: '#a3a5aa', debris: ['#7c7e83', '#5e6065'], thumb: ['#000000', '#0d0f16', '#8f9196'] },
   { id: 'lab', name: 'Полигон', desc: 'Испытательная площадка', gravity: 9.8, drawBackground: drawLab, dust: '#c2c6cc', debris: ['#9aa0a8', '#c7ccd2'], thumb: ['#2b2f36', '#d6dbe1', '#c7ccd2'] },
   { id: 'winter', name: 'Зимний лес', desc: 'Снег и ели', gravity: 9.8, drawBackground: drawWinter, drawForeground: winterSnow, ambient: '#e4ecf8', dust: '#eef3f9', debris: ['#ffffff', '#cfdbe9'], thumb: ['#4b6390', '#dbe6f3', '#eef3f9'] },
 ];

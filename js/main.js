@@ -6,12 +6,8 @@ import { UI } from './ui.js';
 import { initPWA } from './pwa.js';
 import { initAudio, setTimeRate, setListener, setSoundEnabled, engineStart, engineStop, engineSet, sfx } from './audio.js';
 import { findItem } from './catalog.js';
+import { saveSlot, loadSlot } from './scene.js';
 import { clamp, wrapAngle, rand, TAU } from './util.js';
-import { Ragdoll } from './entities/ragdoll.js';
-import { Firearm } from './entities/weapons.js';
-import { Prop } from './entities/props.js';
-import { Explosive } from './entities/explosives.js';
-import { Vehicle } from './entities/vehicles.js';
 
 const SETTINGS_KEY = 'kaboom.settings.v1';
 
@@ -66,6 +62,7 @@ class Game {
     this.drag = null;
     this.pending = null;
     this.mouse = null;
+    this.history = [];
     setSoundEnabled(this.settings.sound);
     this.applyQuality();
     window.addEventListener('resize', () => this.resize());
@@ -166,16 +163,57 @@ class Game {
   }
 
   // ---------- Действия ----------
+  // Создать объект из каталога (общая точка для спавна, копирования, загрузки).
+  place(item, x, y, f = 1, o = {}) {
+    const sim = this.sim;
+    const e = item.make(sim, x, Math.min(y, -0.05), f);
+    e.spawnRef = { cat: item.cat, id: item.id, f };
+    sim.add(e);
+    if (!o.noLift) {
+      const a = e.aabb();
+      if (a.uy > -0.005) e.translate(0, -a.uy - 0.01);
+    }
+    if (!o.noHistory) {
+      this.history.push(e);
+      if (this.history.length > 60) this.history.shift();
+    }
+    return e;
+  }
+
+  undo() {
+    while (this.history.length) {
+      const e = this.history.pop();
+      if (e.removed) continue;
+      if (this.controlled === e) this.control(null);
+      if (this.drag && this.drag.ent === e) this.endDrag();
+      this.sim.remove(e);
+      this.ui.toast(`Отменено: ${e.name}`);
+      return true;
+    }
+    this.ui.toast('Нечего отменять');
+    return false;
+  }
+
+  saveScene(n) {
+    const ok = saveSlot(this, n);
+    this.ui.toast(ok ? `Сцена сохранена в слот ${n}` : 'Не удалось сохранить (память браузера недоступна)');
+  }
+
+  loadScene(n) {
+    const c = loadSlot(this, n, { rope: drawRope, weld: drawWeld });
+    if (c < 0) this.ui.toast('Слот пуст');
+    else this.ui.toast(`Загружено объектов: ${c}`);
+    this.ui.markWorld();
+  }
+
   spawn(item, x, y) {
     const sim = this.sim;
-    const e = item.make(sim, x, Math.min(y, -0.05), this.placeFlip);
-    sim.add(e);
-    const a = e.aabb();
-    if (a.uy > -0.005) e.translate(0, -a.uy - 0.01);
+    const e = this.place(item, x, y, this.placeFlip);
     sim.effects.dust(x, Math.min(y, -0.1), 3, 'rgba(255,255,255,0.6)', 0.2);
     sfx.ui();
     if (e.isC4) this.ui.toast('C4 прилипает к поверхностям. Взрыв — кнопкой «Детонатор»', 2600);
     else if (e.isRagdoll && e.typeId === 'soldier') this.ui.toast('Перетащи оружие к руке солдата — он будет стрелять по зомби', 2800);
+    else if (e.isMelee && e.def.syringe) this.ui.toast('Перетащи шприц иглой на персонажа или брось в него', 2600);
     else if (e.isWeapon) this.ui.toast('Нажми на оружие — выстрел. Отпусти рядом с рукой — персонаж возьмёт его', 2800);
     else if (e.isVehicle) this.ui.toast('Нажми на технику, чтобы сесть за руль', 2200);
     return e;
@@ -276,6 +314,19 @@ class Game {
     try { this.sim.world.destroyJoint(d.joint); } catch (e) { /* уже удалён */ }
     d.body.setAngularDamping(d.damp);
     const e = d.ent;
+    if (e.isMelee && e.def.syringe && e.full > 0 && !e.removed) {
+      // Отпустили шприц иглой на персонаже — укол.
+      const tip = e.muzzleWorld();
+      const b = this.sim.bodyAt(tip.x, tip.y, 0.08);
+      const t = b && this.sim.entAt(b);
+      if (t && t.isRagdoll) {
+        const axis = e.main.getWorldVector(V(1, 0));
+        e.embedInto(b, tip, axis, t);
+        e.injectInto(t);
+        this.ui.toast(`${t.name}: ${e.name.replace('Шприц: ', '')}`);
+        return;
+      }
+    }
     if (e.isWeapon && !e.holder && !e.removed) {
       // Если отпустили оружие рядом с рукой — персонаж его берёт.
       const g = e.main.getWorldPoint(V(...e.gripLocal()));
@@ -305,18 +356,64 @@ class Game {
   }
 
   demoScene() {
+    const add = (cat, id, x, y, f = 1) => this.place(findItem(cat, id), x, y, f, { noHistory: true });
+    add('props', 'crate', -6, -0.5);
+    add('props', 'crate', -6, -1.5);
+    add('props', 'crate', -4.9, -0.5);
+    add('boom', 'barrel', -3.6, -0.5);
+    add('people', 'human', -1.5, -1, 1);
+    const s = add('people', 'soldier', 1.8, -1, -1);
+    const ak = add('guns', 'ak', 1.2, -1.3, -1);
+    this.sim.defer(() => s.grab(ak));
+    add('props', 'melon', 4.5, -0.3);
+    add('vehicles', 'truck', 9.5, -0.6, -1);
+  }
+
+  // Действия из контекстного меню объекта.
+  ctxAction(act, body) {
     const sim = this.sim;
-    const add = (e) => { sim.add(e); const a = e.aabb(); if (a.uy > 0) e.translate(0, -a.uy - 0.01); return e; };
-    add(new Prop(sim, -6, -0.5, 'crate'));
-    add(new Prop(sim, -6, -1.5, 'crate'));
-    add(new Prop(sim, -4.9, -0.5, 'crate'));
-    add(new Explosive(sim, -3.6, -0.5, 'barrel'));
-    add(new Ragdoll(sim, -1.5, -1, 'human', 1));
-    const s = add(new Ragdoll(sim, 1.8, -1, 'soldier', -1));
-    const ak = add(new Firearm(sim, 1.2, -1.3, 'ak', -1));
-    sim.defer(() => s.grab(ak));
-    add(new Prop(sim, 4.5, -0.3, 'melon'));
-    add(new Vehicle(sim, 9.5, -0.6, 'truck', -1));
+    const e = sim.entAt(body);
+    if (!e || e.removed) return;
+    switch (act) {
+      case 'activate': {
+        const res = e.activate(body);
+        if (res === 'drive') this.control(e);
+        break;
+      }
+      case 'freeze': {
+        const st = !e.bodies[0].isStatic();
+        for (const b of e.bodies) { if (st) b.setStatic(); else { b.setDynamic(); b.setAwake(true); } }
+        break;
+      }
+      case 'fire':
+        for (const b of e.bodies) sim.ignite(b, 10);
+        if (!e.bodies.some((b) => sim.burning.has(b))) this.ui.toast('Это не горит');
+        break;
+      case 'extinguish':
+        for (const b of e.bodies) sim.extinguish(b);
+        break;
+      case 'heal': e.heal(); break;
+      case 'kill':
+        e.die('menu');
+        for (const p of e.partList) p.hp = Math.min(p.hp, 0);
+        break;
+      case 'drop': e.drop(); break;
+      case 'clone': {
+        if (!e.spawnRef) break;
+        const a = e.aabb();
+        const item = findItem(e.spawnRef.cat, e.spawnRef.id);
+        const f = e.isRagdoll ? e.facing : e.spawnRef.f;
+        const c = this.place(item, a.ux + (a.ux - a.lx) / 2 + 0.3, (a.ly + a.uy) / 2, f);
+        sim.effects.dust((a.lx + a.ux) / 2, (a.ly + a.uy) / 2, 3, 'rgba(255,255,255,0.6)', 0.2);
+        void c;
+        break;
+      }
+      case 'delete':
+        if (this.controlled === e) this.control(null);
+        sim.remove(e);
+        break;
+    }
+    sfx.ui();
   }
 
   // ---------- Цикл ----------
@@ -399,7 +496,6 @@ function boot() {
     sfx.ui();
     start.classList.add('hidden');
   };
-  void findItem;
 }
 
 boot();

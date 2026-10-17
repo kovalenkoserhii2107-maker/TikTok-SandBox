@@ -361,7 +361,13 @@ export class Effects {
       }
     }
     ctx.globalAlpha = 1;
-    // Светящиеся частицы.
+  }
+
+  // Светящиеся частицы рисуются после ночного освещения, чтобы не тускнели.
+  drawGlow(r) {
+    const ctx = r.ctx;
+    r.screen();
+    const W = r.W, H = r.H;
     ctx.globalCompositeOperation = 'lighter';
     for (const p of this.ps) {
       if (p.type !== 'fire' && p.type !== 'spark' && p.type !== 'flash') continue;
@@ -382,8 +388,8 @@ export class Effects {
         ctx.globalAlpha = lt;
         ctx.drawImage(softSprite('#fff4d0', 0.2), sx - s * 2, sy - s * 2, s * 4, s * 4);
       } else {
-        ctx.globalAlpha = Math.min(1, lt * 1.5) * 0.9;
-        const col = lt > 0.6 ? '#ffe9a8' : lt > 0.3 ? '#ffa23a' : '#d4471c';
+        ctx.globalAlpha = Math.min(1, lt * 1.5) * (s > 18 ? 0.5 : 0.75);
+        const col = lt > 0.65 ? '#ffd88a' : lt > 0.3 ? '#ff9a32' : '#d4471c';
         ctx.drawImage(softSprite(col, 0.3), sx - s, sy - s, s * 2, s * 2);
       }
     }

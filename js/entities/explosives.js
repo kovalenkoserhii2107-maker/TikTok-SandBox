@@ -17,6 +17,7 @@ function tinyText(ctx, txt, x, y, size, color, family = 'system-ui, sans-serif')
 
 export const EXPLOSIVES = {
   grenade: { name: 'Граната', mass: 0.6, P: 1.1, R: 6, fuse: 3, shrapnel: 26, chain: 15 },
+  molotov: { name: 'Коктейль Молотова', mass: 0.9, fire: true },
   dynamite: { name: 'Динамит', mass: 1.2, P: 1.6, R: 7.5, fuse: 4, chain: 12 },
   mine: { name: 'Мина', mass: 3, P: 2, R: 6.5, chain: 10 },
   c4: { name: 'Взрывчатка C4', mass: 1, P: 2.6, R: 9.5, chain: 25, sticky: true },
@@ -68,6 +69,20 @@ export class Explosive extends Entity {
         }
         ctx.fillStyle = '#7d848b';
         ctx.fillRect(0.02, -0.095, 0.012, 0.09);
+      };
+    } else if (id === 'molotov') {
+      const body = R(-0.05, -0.08, 0.05, 0.13);
+      const neck = R(-0.022, -0.17, 0.022, -0.08);
+      const total = polyArea(body) + polyArea(neck);
+      const v = add(body, '#3f7a3a', { t: 0.1, mat: 'glass', areaTotal: total, v: { alpha: 0.85 } });
+      add(neck, '#3f7a3a', { t: 0.045, mat: 'glass', areaTotal: total, v: { alpha: 0.85 } });
+      v.detail = (ctx) => {
+        ctx.fillStyle = '#c9822b';
+        ctx.fillRect(-0.045, -0.02, 0.09, 0.145);
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillRect(-0.035, -0.07, 0.015, 0.18);
+        ctx.fillStyle = '#e8dcc0';
+        ctx.fillRect(-0.016, -0.22, 0.032, 0.06);
       };
     } else if (id === 'dynamite') {
       const v = add(R(-0.16, -0.06, 0.16, 0.06), '#c0392b', { t: 0.12 });
@@ -185,7 +200,7 @@ export class Explosive extends Entity {
     }
     if (id === 'bomb') { this.armed = !this.armed; sfx.click(this.main.getPosition()); return true; }
     if (id === 'mine') { this.armed = true; return true; }
-    if (id === 'barrel') { this.detonate(0); return true; }
+    if (id === 'barrel' || id === 'molotov') { this.detonate(0); return true; }
     if (this.timer === null) {
       this.timer = this.def.fuse;
       sfx.click(this.main.getPosition());
@@ -202,6 +217,10 @@ export class Explosive extends Entity {
     const b = this.main;
     if (!b) return;
     if (id === 'mine' && !this.armed && this.sim.time - this.spawnT > 1.5) this.armed = true;
+    if (id === 'molotov' && Math.random() < dt * 14) {
+      const w = b.getWorldPoint(V(0, -0.23));
+      this.sim.effects.flame(w.x, w.y, 0.06);
+    }
     if (this.timer !== null && !this.detonating) {
       this.timer -= dt;
       this.beepT -= dt;
@@ -244,6 +263,7 @@ export class Explosive extends Entity {
     const dv = imp / this.main.getMass();
     if (this.expId === 'bomb' && this.armed && dv > 3) this.detonate(0);
     if (this.expId === 'barrel' && dv > 16) this.detonate(0.05);
+    if (this.expId === 'molotov' && dv > 3.5 && this.sim.time - this.spawnT > 0.3) this.detonate(0);
     if (this.expId === 'grenade' && dv > 1.5 && !this.sim.silent) sfx.impact('metal', 0.3, this.main.getPosition());
   }
 
@@ -253,9 +273,22 @@ export class Explosive extends Entity {
       this.hp -= dmg;
       if (this.hp <= 0) this.detonate(0.1);
     } else if (this.expId === 'bomb' && dmg > 40) this.detonate(0);
+    else if (this.expId === 'molotov') this.detonate(0);
     else if (this.expId === 'dynamite' || this.expId === 'grenade') {
       if (dmg > 30) this.detonate(0);
     }
+  }
+
+  flammability() {
+    return { barrel: 1, dynamite: 1, molotov: 1, c4: 0.5, grenade: 0.3, bomb: 0.3, mine: 0.3 }[this.expId] || 0;
+  }
+
+  onBurn(body, dt) {
+    this.burnT = (this.burnT || 0) + dt;
+    const id = this.expId;
+    if (id === 'dynamite' && this.timer === null) this.timer = 1.5;
+    else if (id === 'molotov') this.detonate(0);
+    else if (this.burnT > (id === 'barrel' ? 2.5 : 3.5)) this.detonate(0);
   }
 
   onBlast(body, dmg) {
@@ -273,6 +306,7 @@ export class Explosive extends Entity {
       const x = p.x, y = p.y;
       const d = this.def;
       this.sim.remove(this);
+      if (d.fire) { this.splashFire(x, y); return; }
       this.sim.explode(x, y, d.P, d.R, { nuke: d.nuke });
       if (d.shrapnel) {
         for (let i = 0; i < d.shrapnel; i++) {
@@ -280,6 +314,27 @@ export class Explosive extends Entity {
           this.sim.hitscan(x, y, Math.cos(a), Math.sin(a), { damage: 22, impulse: 4, range: 14, tracer: 'rgba(255,220,160,0.6)', tracerW: 0.6 });
         }
       }
+    });
+  }
+
+  // Молотов: разбитая бутылка, горящее топливо разливается.
+  splashFire(x, y) {
+    const sim = this.sim;
+    const fx = sim.effects;
+    fx.glassShards(x, y, 16, 3);
+    sfx.glassBreak({ x, y });
+    sfx.fireWhoosh({ x, y });
+    for (let i = 0; i < fx.n(22); i++) {
+      const a = rand(Math.PI, TAU);
+      const s = rand(1, 5);
+      fx.add({ type: 'fire', x, y, z: rand(-0.6, 0.6), vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.4, 0.9), size: rand(0.15, 0.32), grow: 0.25, g: 0.6, drag: 1 });
+    }
+    fx.light(x, y, 6, 0.5, '#ff9a40');
+    if (y > -2.5) sim.addGroundFire(x, 2.3, 9);
+    const R2 = 2.2;
+    sim.world.queryAABB(new pl.AABB(V(x - R2, y - R2), V(x + R2, y + R2)), (fix) => {
+      sim.ignite(fix.getBody(), 8);
+      return true;
     });
   }
 

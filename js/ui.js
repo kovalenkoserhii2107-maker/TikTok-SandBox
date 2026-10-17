@@ -6,6 +6,7 @@ import { Renderer } from './render.js';
 import { initAudio, sfx, setSoundEnabled, isSoundEnabled } from './audio.js';
 import { clamp, wrapAngle, TAU } from './util.js';
 import { showInstall, canInstall } from './pwa.js';
+import { slotInfo } from './scene.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -30,6 +31,7 @@ const ICONS = {
   down: '<path d="M5 9l7 7 7-7"/>',
   fire: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/>',
   bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
+  undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/>',
   cam: '<path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
 };
 const icon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n]}</svg>`;
@@ -62,6 +64,8 @@ export class UI {
     const g = this.game;
     $('#btnMenu').innerHTML = icon('menu');
     $('#btnClear').innerHTML = icon('trash');
+    $('#btnUndo').innerHTML = icon('undo');
+    $('#btnUndo').onclick = () => { g.undo(); sfx.ui(); };
     $('#btnSpawn').innerHTML = icon('plus') + '<span>Создать</span>';
     $('#placeFlip').innerHTML = icon('flip');
     $('#placeClose').innerHTML = icon('close');
@@ -269,7 +273,7 @@ export class UI {
       sim.add(e);
       const a = e.aabb();
       const w = a.ux - a.lx, h = a.uy - a.ly;
-      r.cam.s = Math.min((cv.width * 0.8) / w, (cv.height * 0.78) / h, 220);
+      r.cam.s = Math.min((cv.width * 0.8) / w, (cv.height * 0.78) / h, 480);
       r.cam.x = (a.lx + a.ux) / 2;
       r.cam.y = (a.ly + a.uy) / 2;
       r.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -305,7 +309,75 @@ export class UI {
   }
 
   // ---------- Меню ----------
+  renderSlots() {
+    const el = $('#slots');
+    el.innerHTML = '';
+    for (let n = 1; n <= 3; n++) {
+      const info = slotInfo(n);
+      const row = document.createElement('div');
+      row.className = 'slot';
+      const when = info ? new Date(info.time).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+      row.innerHTML = `<div><b>Слот ${n}</b><small>${info ? `${info.count} объектов · ${when}` : 'пусто'}</small></div>`;
+      const save = document.createElement('button');
+      save.className = 'save';
+      save.textContent = 'Сохранить';
+      save.onclick = () => {
+        if (info && !confirm(`Перезаписать слот ${n}?`)) return;
+        this.game.saveScene(n);
+        this.renderSlots();
+      };
+      const load = document.createElement('button');
+      load.textContent = 'Загрузить';
+      load.disabled = !info;
+      load.onclick = () => { this.game.loadScene(n); this.closeMenu(); };
+      row.append(save, load);
+      el.appendChild(row);
+    }
+  }
+
+  // ---------- Контекстное меню объекта ----------
+  openCtx(body, sx, sy) {
+    const g = this.game;
+    const e = g.sim.entAt(body);
+    if (!e || e.removed) return;
+    const m = $('#ctx');
+    m.innerHTML = '';
+    const title = document.createElement('div');
+    title.className = 'ctitle';
+    title.textContent = e.name || 'Объект';
+    m.appendChild(title);
+    const add = (act, label, ic, cls) => {
+      const b = document.createElement('button');
+      if (cls) b.className = cls;
+      b.innerHTML = `<i>${ic}</i>${label}`;
+      b.onclick = () => { g.ctxAction(act, body); this.closeCtx(); };
+      m.appendChild(b);
+    };
+    if (e.isVehicle) add('activate', 'Сесть за руль', '🚗');
+    else if (e.isRagdoll) { if (e.holding) add('activate', 'Атаковать', '💥'); }
+    else add('activate', 'Активировать', '⚡');
+    const frozen = e.bodies[0] && e.bodies[0].isStatic();
+    if (!e.permanentStatic) add('freeze', frozen ? 'Разморозить' : 'Заморозить', '❄️');
+    const burning = e.bodies.some((b) => g.sim.burning.has(b));
+    add(burning ? 'extinguish' : 'fire', burning ? 'Потушить' : 'Поджечь', burning ? '💧' : '🔥');
+    if (e.isRagdoll) {
+      add('heal', 'Вылечить', '❤️');
+      if (e.alive && !e.type.immortal) add('kill', 'Убить', '💀');
+      if (e.holding) add('drop', 'Бросить оружие', '✋');
+    }
+    if (e.spawnRef) add('clone', 'Копировать', '⧉');
+    add('delete', 'Удалить', '🗑️', 'danger');
+    m.classList.remove('hidden');
+    const w = m.offsetWidth, h = m.offsetHeight;
+    m.style.left = clamp(sx + 12, 8, window.innerWidth - w - 8) + 'px';
+    m.style.top = clamp(sy - h / 2, 8, window.innerHeight - h - 8) + 'px';
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch (err) { /* нет вибрации */ } }
+  }
+
+  closeCtx() { $('#ctx').classList.add('hidden'); }
+
   openMenu() {
+    this.renderSlots();
     $('#menu').classList.remove('hidden');
     $('#btnInstall').classList.toggle('hidden', !canInstall());
     sfx.ui();
@@ -336,6 +408,8 @@ export class UI {
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
     cv.addEventListener('pointerdown', (e) => {
       initAudio();
+      this.closeCtx();
+      clearTimeout(this.lpTimer);
       cv.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: false });
       if (this.pointers.size === 2) {
@@ -358,6 +432,23 @@ export class UI {
         if (body && !body.isStatic()) {
           this.gesture = { type: 'maybeDrag', w, body };
         }
+        // Долгое нажатие на объекте — контекстное меню.
+        const lpBody = body;
+        if (lpBody) {
+          const id = e.pointerId;
+          this.lpTimer = setTimeout(() => {
+            const p = this.pointers.get(id);
+            const G = this.gesture;
+            if (p && !p.moved && this.pointers.size === 1 && G && (G.type === 'maybeDrag' || G.type === 'tap')) {
+              this.gesture = { type: 'consumed' };
+              this.openCtx(lpBody, p.x, p.y);
+            }
+          }, 480);
+        }
+      }
+      if (e.button === 2) {
+        const body = g.sim.bodyAt(w.x, w.y, Math.max(0.12, 14 / g.r.cam.s));
+        if (body) { this.gesture = { type: 'consumed' }; this.openCtx(body, e.clientX, e.clientY); return; }
       }
       if (e.button === 2 || e.button === 1) this.gesture = { type: 'pan' };
     });
@@ -367,7 +458,7 @@ export class UI {
       if (!p) return;
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       p.x = e.clientX; p.y = e.clientY;
-      if (Math.hypot(p.x - p.sx, p.y - p.sy) > 7) p.moved = true;
+      if (Math.hypot(p.x - p.sx, p.y - p.sy) > 7) { p.moved = true; clearTimeout(this.lpTimer); }
       const G = this.gesture;
       if (!G) return;
       if (G.type === 'pinch' && this.pointers.size >= 2) {
@@ -401,8 +492,10 @@ export class UI {
     const end = (e) => {
       const p = this.pointers.get(e.pointerId);
       this.pointers.delete(e.pointerId);
+      clearTimeout(this.lpTimer);
       const G = this.gesture;
       if (!p) return;
+      if (G && G.type === 'consumed') { if (this.pointers.size === 0) this.gesture = null; return; }
       if (G && (G.type === 'pinch' || G.type === 'rotate')) {
         if (G.type === 'rotate') { if (g.drag) g.drag.rot = null; this.gesture = { type: 'drag' }; return; }
         if (this.pointers.size === 0) this.gesture = null;
@@ -441,7 +534,8 @@ export class UI {
         case 'ArrowDown': case 'KeyS': if (c) c.aim = -1; break;
         case 'KeyF': if (c) c.fire = true; break;
         case 'KeyG': if (c) c.mg = true; break;
-        case 'Escape': g.control(null); this.setPlace(null); g.pending = null; break;
+        case 'Escape': g.control(null); this.setPlace(null); g.pending = null; this.closeCtx(); break;
+        case 'KeyZ': if (e.ctrlKey || e.metaKey) { e.preventDefault(); g.undo(); } break;
         case 'KeyQ': if (g.drag) g.drag.rot = (g.drag.rot ?? g.drag.body.getAngle()) - 0.2; break;
         case 'KeyE': if (g.drag) g.drag.rot = (g.drag.rot ?? g.drag.body.getAngle()) + 0.2; break;
         default: {

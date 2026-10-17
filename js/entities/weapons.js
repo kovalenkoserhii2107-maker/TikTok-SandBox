@@ -99,6 +99,18 @@ export const GUNS = {
       { pts: R(-0.34, 0.02, -0.24, 0.15), color: '#4a5530', vis: true },
     ],
   },
+  flamer: {
+    name: 'Огнемёт', mass: 9, rate: 0.04, auto: true, flamer: true, recoil: 0.35, range: 7.5,
+    grip: [-0.08, 0.02], muzzle: [0.62, -0.045],
+    shapes: [
+      { pts: R(-0.36, -0.02, -0.06, 0.15), color: '#b3261e' },
+      { pts: R(-0.12, -0.075, 0.46, -0.02), color: '#3b3f45' },
+      { pts: R(0.46, -0.065, 0.62, -0.028), color: '#22252a' },
+      { pts: [[-0.1, -0.02], [-0.05, -0.02], [-0.06, 0.08], [-0.11, 0.075]], color: '#22252a' },
+      { pts: [[0.2, -0.02], [0.25, -0.02], [0.24, 0.07], [0.19, 0.07]], color: '#22252a', vis: true },
+      { pts: R(-0.3, 0.03, -0.12, 0.05), color: '#e8b923', vis: true },
+    ],
+  },
   rpg: {
     name: 'Ракетница РПГ', mass: 7, rate: 1.6, rocket: true, recoil: 5, snd: 'rocket',
     grip: [-0.06, 0.01], muzzle: [0.47, -0.07],
@@ -163,7 +175,7 @@ class Weapon extends Entity {
           ud: s.sharp ? { sharp: true } : {},
         });
       }
-      const v = visPoly(b, pts, { z: 0, t: d.t || 0.055, color: s.color, warhead: s.warhead });
+      const v = visPoly(b, pts, { z: 0, t: d.t || 0.055, color: s.color, warhead: s.warhead, alpha: s.alpha });
       this.visuals.push(v);
     }
     if (this.visuals[0] && this.drawDetail) {
@@ -232,7 +244,9 @@ export class Firearm extends Weapon {
     const dir = b.getWorldVector(V(1, 0));
     const group = this.curGroup;
     const sim = this.sim;
-    if (d.rocket) {
+    if (d.flamer) {
+      this.flame(mz, dir, group);
+    } else if (d.rocket) {
       this.loaded = false;
       sim.after(d.rate, () => { this.loaded = true; });
       const bv = b.getLinearVelocity();
@@ -263,6 +277,36 @@ export class Firearm extends Weapon {
     b.applyAngularImpulse(-this.ys() * d.recoil * 0.012, true);
     if (d.recoil > 8) sim.shake(d.recoil * 0.12);
     return true;
+  }
+
+  flame(mz, dir, group) {
+    const sim = this.sim;
+    const range = this.def.range;
+    const a = Math.atan2(dir.y, dir.x) + gauss() * 0.06;
+    const dx = Math.cos(a), dy = Math.sin(a);
+    const hits = sim.raycastAll(V(mz.x, mz.y), V(mz.x + dx * range, mz.y + dy * range), (fix) => fix.getFilterGroupIndex() !== group);
+    let dist = range;
+    for (const h of hits) {
+      const ud = h.body.getUserData() || {};
+      dist = h.fraction * range;
+      if (ud.ground) {
+        if (Math.random() < 0.12) sim.addGroundFire(h.point.x, 0.9, 4);
+        break;
+      }
+      sim.ignite(h.body, 8);
+      if (h.body.isDynamic()) h.body.applyLinearImpulse(V(dx * 1.2, dy * 1.2), V(h.point.x, h.point.y), true);
+      if (ud.ent && ud.ent.isRagdoll) ud.ent.damage(ud.ent.partOf(h.body), 1.2, 'burn');
+      break;
+    }
+    const fx = sim.effects;
+    for (let i = 0; i < 4; i++) {
+      const aa = a + gauss() * 0.05;
+      const v = 13 * rand(0.85, 1.1);
+      fx.add({ type: 'fire', x: mz.x, y: mz.y, vx: Math.cos(aa) * v, vy: Math.sin(aa) * v, life: Math.max(0.05, dist / v) * rand(1, 1.25), size: 0.1, grow: 1.3, g: -0.2, drag: 0.3 });
+    }
+    if (Math.random() < 0.3) fx.smokePuff(mz.x + dx * dist, mz.y + dy * dist, 0.3, '#444444', 0.35);
+    fx.light(mz.x + dx * dist * 0.5, mz.y + dy * dist * 0.5, 3, 0.06, '#ff9a40');
+    sfx.flame(mz);
   }
 
   drawDetail(ctx) {
@@ -347,6 +391,27 @@ export const MELEE = {
   },
 };
 
+// Шприцы: тонкая игла (острая), прозрачный цилиндр с жидкостью.
+function syringe(name, kind, liquid) {
+  return {
+    name, syringe: kind, liquid, mass: 0.08, tip: [0.15, 0], grip: [-0.02, 0], stabK: 0.5, cutK: 0,
+    shapes: [
+      { pts: R(-0.08, -0.02, 0.05, 0.02), color: '#e8f1f5', mat: 'plastic', alpha: 0.65 },
+      { pts: R(-0.13, -0.007, -0.08, 0.007), color: '#9aa3ad', mat: 'plastic' },
+      { pts: R(-0.142, -0.022, -0.128, 0.022), color: '#7d848b', mat: 'plastic' },
+      { pts: R(0.05, -0.008, 0.066, 0.008), color: '#cfd5db' },
+      { pts: [[0.066, -0.006], [0.15, -0.003], [0.15, 0.003], [0.066, 0.006]], color: '#d9dee3', sharp: true },
+    ],
+  };
+}
+Object.assign(MELEE, {
+  syrHeal: syringe('Шприц: лечение', 'heal', '#3ddc84'),
+  syrAdrenaline: syringe('Шприц: адреналин', 'adrenaline', '#ffd23f'),
+  syrZombie: syringe('Шприц: зомби-вирус', 'zombie', '#a35cff'),
+  syrPoison: syringe('Шприц: яд', 'poison', '#5d8f2a'),
+  syrCryo: syringe('Шприц: криозаморозка', 'cryo', '#7fd3ff'),
+});
+
 export class Melee extends Weapon {
   constructor(sim, x, y, id, f = 1) {
     super(sim);
@@ -356,6 +421,7 @@ export class Melee extends Weapon {
     this.name = this.def.name;
     this.embeds = [];
     this.stabCd = 0;
+    this.full = this.def.syringe ? 1 : 0;
     this.makeBody(x, y, 0, { bullet: true, angularDamping: 0.2 });
     this.setFlip(f < 0);
     if (f < 0) this.main.setTransform(this.main.getPosition(), Math.PI);
@@ -396,6 +462,17 @@ export class Melee extends Weapon {
     if (e.isRagdoll) {
       const part = e.parts[oud.part];
       if (!part) return;
+      if (d.syringe) {
+        if (along > 0.9 && tipDist < 0.07 && this.stabCd <= 0) {
+          this.stabCd = 0.3;
+          sim.defer(() => {
+            e.damage(part, 1, 'stab', pt, { x: axis.x, y: axis.y });
+            this.embedInto(ob, pt, axis, e);
+            this.injectInto(e);
+          });
+        }
+        return;
+      }
       if (!d.noStab && along > 2.6 && tipDist < 0.14 && this.stabCd <= 0) {
         this.stabCd = 0.25;
         const dmg = along * d.stabK;
@@ -417,6 +494,28 @@ export class Melee extends Weapon {
     } else if (e.damage && speed > 3) {
       sim.defer(() => e.damage((speed - 3) * d.cutK * 1.5, 'cut', ob, pt));
     }
+  }
+
+  injectInto(e) {
+    if (!this.def.syringe || this.full <= 0 || !e.inject) return false;
+    this.full = 0;
+    e.inject(this.def.syringe);
+    sfx.inject(this.main.getPosition());
+    return true;
+  }
+
+  drawDetail(ctx) {
+    const d = this.def;
+    if (!d.syringe) return;
+    if (this.full > 0) {
+      ctx.fillStyle = d.liquid;
+      ctx.fillRect(-0.04, -0.016, 0.088 * this.full, 0.032);
+    }
+    ctx.fillStyle = '#5d646b';
+    ctx.fillRect(-0.082 + (1 - this.full) * 0.07, -0.017, 0.01, 0.034);
+    ctx.strokeStyle = 'rgba(60,70,80,0.6)';
+    ctx.lineWidth = 0.003;
+    for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(-0.06 + i * 0.022, -0.02); ctx.lineTo(-0.06 + i * 0.022, -0.012); ctx.stroke(); }
   }
 
   embedInto(body, pt, axis, victim) {

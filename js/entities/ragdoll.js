@@ -82,6 +82,11 @@ export class Ragdoll extends Entity {
     this.blinkT = rand(1, 4);
     this.dripAcc = 0;
     this.infected = false;
+    this.onFireT = 0;
+    this.adrenaline = 0;
+    this.poison = 0;
+    this.frozen = 0;
+    this.frozenApplied = false;
     this.holding = null;
     this.relaxed = false;
     this.mode = 'idle';
@@ -179,6 +184,7 @@ export class Ragdoll extends Entity {
     let c = this.col[v.role] || '#888888';
     if (v.side === 'B') c = shade(c, -0.16);
     if (this.burn > 0.05) c = mix(c, '#1d1510', this.burn * 0.85);
+    if (this.frozen > 0) c = mix(c, '#bfe8ff', 0.55);
     return c;
   }
 
@@ -313,6 +319,13 @@ export class Ragdoll extends Entity {
       g.farmF = -0.5 * f; g.farmB = -0.5 * f;
       this.lean = 0.12 * f * (this.speed > 1.6 ? 1.6 : 1);
     }
+    if (this.poison > 0) {
+      g.uarmF = f * (-1 + Math.sin(t * 23) * 1.2); g.uarmB = f * (-1 + Math.cos(t * 19) * 1.2);
+      g.farmF = -1.2 * f; g.farmB = -1.2 * f;
+      g.head = 0.4 * Math.sin(t * 17);
+      g.thighF = f * (-0.3 + 0.4 * Math.sin(t * 21)); g.thighB = f * (-0.3 + 0.4 * Math.cos(t * 18));
+      return;
+    }
     if (this.mode === 'zombie') {
       g.uarmF = -f * 1.45 + 0.15 * Math.sin(t * 2.1);
       g.uarmB = -f * 1.3 + 0.15 * Math.sin(t * 1.7 + 1);
@@ -349,6 +362,18 @@ export class Ragdoll extends Entity {
 
   preStep(h) {
     const T = this.type;
+    if (this.frozen > 0) {
+      // Заморожен: суставы как камень.
+      if (!this.frozenApplied) {
+        this.frozenApplied = true;
+        for (const p of this.partList) {
+          if (!p.joint) continue;
+          p.joint.setMotorSpeed(0);
+          p.joint.setMaxMotorTorque(6000 * this.k * this.k * this.k);
+        }
+      }
+      return;
+    }
     const active = this.alive && this.conscious && !T.noMuscles;
     if (!active) {
       if (!this.relaxed) {
@@ -365,6 +390,7 @@ export class Ragdoll extends Entity {
     this.computePose(h);
     const g = this.tgt;
     const holdBoost = this.holding ? 2.2 : 1;
+    const adr = this.adrenaline > 0 ? 1.8 : 1;
     for (const p of this.partList) {
       const j = p.joint;
       if (!j) continue;
@@ -374,7 +400,7 @@ export class Ragdoll extends Entity {
         const sp = swing ? 32 : 12;
         const err = (g[p.name] || 0) - j.getJointAngle();
         j.setMotorSpeed(clamp(err * sp, -sp, sp));
-        j.setMaxMotorTorque(p.tq * this.vigor * (isArm ? holdBoost : 1) * (swing ? 3 : 1));
+        j.setMaxMotorTorque(p.tq * this.vigor * adr * (isArm ? holdBoost : 1) * (swing ? 3 : 1));
       } else {
         j.setMotorSpeed(0);
         j.setMaxMotorTorque(p.fr);
@@ -393,7 +419,7 @@ export class Ragdoll extends Entity {
     belly.applyTorque(tq * 0.45, true);
     if (grounded && this.walkDir && Math.abs(err) < 0.6) {
       const vx = belly.getLinearVelocity().x;
-      const F = clamp((this.walkDir * this.speed - vx) * this.M * 4, -this.M * 5, this.M * 5) * this.vigor;
+      const F = clamp((this.walkDir * this.speed * adr - vx) * this.M * 4, -this.M * 5 * adr, this.M * 5 * adr) * this.vigor;
       belly.applyForceToCenter(V(F * 0.5, 0), true);
       chest.applyForceToCenter(V(F * 0.5, 0), true);
     }
@@ -411,6 +437,24 @@ export class Ragdoll extends Entity {
     if (this.blinkT < -0.13) this.blinkT = rand(2, 5);
     this.getUpT -= dt;
     this.getUpCd -= dt;
+    this.onFireT -= dt;
+    if (this.adrenaline > 0) {
+      this.adrenaline -= dt;
+      this.pain = 0;
+      this.stun = 0;
+    }
+    if (this.frozen > 0) {
+      this.frozen -= dt;
+      if (this.frozen <= 0) { this.frozenApplied = false; this.relaxed = false; }
+    }
+    if (this.poison > 0 && this.alive) {
+      this.poison -= dt;
+      this.damage(this.parts.chest, dt * 22, 'poison');
+      if (Math.random() < dt * 2 && this.type.blood) {
+        const hp = this.parts.head.gone ? null : this.parts.head.body.getPosition();
+        if (hp) this.sim.effects.drip(hp.x + 0.08 * this.facing, hp.y + 0.08, 'zblood');
+      }
+    }
 
     if (T.blood) {
       let total = 0;
@@ -429,9 +473,9 @@ export class Ragdoll extends Entity {
       }
     }
     if (this.alive && T.blood && !T.noBleedDeath && this.blood < 22) this.die('blood');
-    this.conscious = this.alive && this.stun <= 0 &&
+    this.conscious = this.alive && this.stun <= 0 && this.frozen <= 0 &&
       (T.painK === 0 || this.pain < 150) && (T.noBleedDeath || this.blood > 42);
-    this.vigor = T.noBleedDeath ? 1 : clamp((this.blood - 35) / 45, 0.25, 1) * clamp(1 - this.pain / 260, 0.4, 1);
+    this.vigor = T.noBleedDeath || this.adrenaline > 0 ? 1 : clamp((this.blood - 35) / 45, 0.25, 1) * clamp(1 - this.pain / 260, 0.4, 1);
 
     if (this.infected) {
       this.infectT -= dt;
@@ -510,8 +554,15 @@ export class Ragdoll extends Entity {
     const ai = this.type.ai;
     this.thinkT -= dt;
     const me = this.parts.chest.body.getPosition();
+    if (this.onFireT > 0 && this.type.painK > 0) {
+      this.mode = 'panic';
+      this.speed = 2.3 * this.k;
+      if (!this.walkDir || Math.random() < dt * 0.7) this.setFacing(Math.random() < 0.5 ? -1 : 1);
+      this.walkDir = this.facing;
+      if (Math.random() < dt * 1.5) sfx.scream(me);
+      return;
+    }
     if (ai === 'zombie') {
-      this.mode = 'zombie';
       this.speed = 1.0 * this.k;
       if (this.thinkT <= 0) {
         this.thinkT = rand(0.3, 0.6);
@@ -546,7 +597,8 @@ export class Ragdoll extends Entity {
         const want = Math.atan2(tp.y - mz.y + 0.05, tp.x - mz.x);
         this.aim = want;
         const cur = gun.dirAngle();
-        gun.trigger(Math.abs(wrapAngle(cur - want)) < 0.2);
+        const inRange = !gun.def.range || Math.hypot(tp.x - mz.x, tp.y - mz.y) < gun.def.range;
+        gun.trigger(inRange && Math.abs(wrapAngle(cur - want)) < 0.2);
       } else {
         this.aim = null;
         gun.trigger(false);
@@ -676,6 +728,14 @@ export class Ragdoll extends Entity {
       const vb = ob.getLinearVelocityFromWorldPoint(pt);
       const n = wm.normal;
       const vn = Math.abs((va.x - vb.x) * n.x + (va.y - vb.y) * n.y);
+      if (this.frozen > 0 && vn > 4.5 && ud.part !== 'chest') {
+        const p = this.parts[ud.part];
+        if (p && p.joint) {
+          this.sim.effects.glassShards(pt.x, pt.y, 10, 3);
+          sfx.glassBreak(pt);
+          this.sever(p);
+        }
+      }
       const thr = this.type.toughDv || 8;
       if (vn > thr) {
         const mo = ob.isDynamic() ? ob.getMass() : Infinity;
@@ -710,6 +770,61 @@ export class Ragdoll extends Entity {
       this.sim.effects.bloodSpray(bp.x, bp.y, 0, -1, 8, 2.5, 'blood');
       e.infect();
     });
+  }
+
+  onBurn(body, dt) {
+    const p = this.partOf(body);
+    if (!p) return;
+    this.damage(p, dt * 5, 'burn');
+    this.burn = Math.min(1, this.burn + dt * 0.035);
+    if (this.alive) this.onFireT = 0.6;
+    if (this.frozen > 0) { this.frozen = 0; this.frozenApplied = false; this.relaxed = false; }
+    // Огонь расползается по телу.
+    if (Math.random() < dt * 1.3) {
+      const q = pick(this.partList);
+      if (!q.gone) this.sim.ignite(q.body, 6);
+    }
+  }
+
+  // Эффект укола шприцем.
+  inject(kind) {
+    const T = this.type;
+    const pos = this.parts.chest.body.getPosition();
+    const fx = this.sim.effects;
+    const glow = { heal: '#7dffb0', adrenaline: '#ffd23f', zombie: '#b06cff', poison: '#6bbf3a', cryo: '#9fe2ff' }[kind];
+    fx.light(pos.x, pos.y, 2.2, 0.5, glow || '#ffffff');
+    switch (kind) {
+      case 'heal':
+        this.heal();
+        for (const p of this.partList) this.sim.extinguish(p.body);
+        break;
+      case 'adrenaline':
+        this.adrenaline = 25;
+        this.stun = 0;
+        this.pain = 0;
+        if (!this.alive && !this.parts.head.gone && this.parts.chest.hp > -60 && !T.immortal) {
+          this.alive = true;
+          this.relaxed = false;
+          this.blood = Math.max(this.blood, 45);
+          for (const p of this.partList) p.hp = Math.max(p.hp, p.maxHp * 0.25);
+        }
+        break;
+      case 'zombie':
+        if (!T.infectable) break;
+        if (!this.alive) this.zombify();
+        else { this.infected = true; this.infectT = 2.5; }
+        break;
+      case 'poison':
+        if (T.robot || T.skeleton || T.immortal || T.zombie) break;
+        this.poison = 8;
+        break;
+      case 'cryo':
+        this.frozen = 15;
+        this.frozenApplied = false;
+        for (const p of this.partList) this.sim.extinguish(p.body);
+        fx.add({ type: 'flash', x: pos.x, y: pos.y, vx: 0, vy: 0, life: 0.3, size: 0.8, color: '#bfe8ff', g: 0 });
+        break;
+    }
   }
 
   infect() {

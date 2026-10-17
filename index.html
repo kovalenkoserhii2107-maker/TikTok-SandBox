@@ -21,6 +21,7 @@
   <div id="hud">
     <div class="topbar">
       <button id="btnMenu" class="ic" aria-label="Меню"></button>
+      <button id="btnUndo" class="ic" aria-label="Отменить"></button>
       <div class="spacer"></div>
       <div class="slowmo">
         <button id="btnSlow" class="pill" aria-label="Замедление времени"></button>
@@ -64,6 +65,7 @@
     </div>
 
     <div id="toast"></div>
+    <div id="ctx" class="ctxmenu hidden"></div>
   </div>
 
   <div id="catalog" class="sheetwrap hidden">
@@ -81,6 +83,8 @@
       <div class="drawhead"><div class="logo small"><span>KABOOM</span> SANDBOX</div><button id="menuClose" class="ic sm" aria-label="Закрыть"></button></div>
       <h3>Мир</h3>
       <div id="worldList" class="worlds"></div>
+      <h3>Сцены</h3>
+      <div id="slots" class="slots"></div>
       <h3>Настройки</h3>
       <label class="opt"><span>Звук</span><input type="checkbox" id="optSound"><i></i></label>
       <label class="opt"><span>Кровь</span><input type="checkbox" id="optBlood"><i></i></label>
@@ -103,6 +107,8 @@
         <li><b>Рука</b> — тяни объекты и бросай. Короткое нажатие активирует: выстрел, таймер гранаты, руль техники.</li>
         <li><b>Вращение</b> — держи объект одним пальцем, вторым крути. На ПК — Q / E.</li>
         <li><b>Оружие в руки</b> — отпусти оружие рядом с рукой персонажа. Солдат сам стреляет по зомби.</li>
+        <li><b>Меню объекта</b> — подержи палец на объекте (на ПК — правая кнопка): поджечь, заморозить, копировать, вылечить, удалить.</li>
+        <li><b>Шприцы</b> — перетащи шприц иглой на персонажа или брось в него.</li>
         <li><b>Камера</b> — тяни пустое место, щипок — масштаб.</li>
         <li><b>Замедление</b> — кнопка с часами, ▾ — выбор скорости.</li>
         <li><b>Заморозить, Верёвка, Сварка, Лечить, Удалить</b> — инструменты слева.</li>

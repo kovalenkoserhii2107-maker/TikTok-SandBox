@@ -35,6 +35,7 @@ export const CATEGORIES = [
       { id: 'sniper', name: 'Снайперка', desc: 'Пробивает несколько тел подряд.', make: gun('sniper') },
       { id: 'minigun', name: 'Миниган', desc: 'Раскручивается и сносит всё. Тяжёлый.', make: gun('minigun') },
       { id: 'rpg', name: 'Ракетница', desc: 'Реактивная граната, взрыв при попадании.', make: gun('rpg') },
+      { id: 'flamer', name: 'Огнемёт', desc: 'Струя огня на 7 м. Поджигает людей, дерево, технику.', make: gun('flamer') },
     ],
   },
   {
@@ -50,12 +51,22 @@ export const CATEGORIES = [
   {
     id: 'boom', name: 'Взрывчатка', items: [
       { id: 'grenade', name: 'Граната', desc: 'Нажми — 3 секунды до взрыва, осколки.', make: ex('grenade') },
+      { id: 'molotov', name: 'Молотов', desc: 'Брось — разобьётся и разольёт горящее топливо.', make: ex('molotov') },
       { id: 'dynamite', name: 'Динамит', desc: 'Нажми — горит фитиль 4 секунды.', make: ex('dynamite') },
       { id: 'mine', name: 'Мина', desc: 'Взводится сама, взрывается при наступлении.', make: ex('mine') },
       { id: 'c4', name: 'C4', desc: 'Прилипает к чему угодно. Взрыв — кнопкой «Детонатор».', make: ex('c4') },
       { id: 'barrel', name: 'Взрывная бочка', desc: 'Взрывается от пуль и сильных ударов.', make: ex('barrel') },
       { id: 'bomb', name: 'Авиабомба', desc: 'Нажми, чтобы взвести, — взорвётся при ударе.', make: ex('bomb') },
       { id: 'nuke', name: 'Ядерная бомба', desc: 'Нажми — 5 секунд и всё сносит. Огромный гриб.', make: ex('nuke') },
+    ],
+  },
+  {
+    id: 'special', name: 'Шприцы', items: [
+      { id: 'syrHeal', name: 'Лечение', desc: 'Воткни в персонажа — полностью вылечит и потушит.', make: mel('syrHeal') },
+      { id: 'syrAdrenaline', name: 'Адреналин', desc: 'Сила и скорость ×1.8, нет боли. Может оживить недавно погибшего.', make: mel('syrAdrenaline') },
+      { id: 'syrZombie', name: 'Зомби-вирус', desc: 'Через пару секунд превращает человека в зомби.', make: mel('syrZombie') },
+      { id: 'syrPoison', name: 'Яд', desc: 'Судороги и смерть за несколько секунд.', make: mel('syrPoison') },
+      { id: 'syrCryo', name: 'Криозаморозка', desc: 'Замораживает в статую на 15 с. Ударишь — расколется.', make: mel('syrCryo') },
     ],
   },
   {
@@ -82,6 +93,8 @@ export const CATEGORIES = [
     ],
   },
 ];
+
+for (const c of CATEGORIES) for (const it of c.items) it.cat = c.id;
 
 export function findItem(catId, itemId) {
   const c = CATEGORIES.find((c) => c.id === catId);

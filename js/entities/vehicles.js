@@ -299,6 +299,16 @@ export class Vehicle extends Entity {
 
   activate() { return 'drive'; }
 
+  flammability(body) {
+    if (this.wheels.includes(body)) return 0.7;
+    return this.kind === 'tank' ? 0.15 : 0.45;
+  }
+
+  onBurn(body, dt) {
+    this.burn = Math.min(1, this.burn + dt * 0.02);
+    this.damage(dt * (this.kind === 'tank' ? 40 : 35), 'fire');
+  }
+
   preStep(h) {
     const t = this.wrecked ? 0 : this.ctrl.x;
     for (const j of this.motorWheels) {

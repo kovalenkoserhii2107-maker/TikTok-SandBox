@@ -242,6 +242,19 @@ export const sfx = {
     if (!ready() || !throttle('zap', 80)) return;
     noise({ dur: 0.12, vol: 0.3, type: 'bandpass', freq: 5000, q: 4, pos });
   },
+  flame(pos) {
+    if (!ready() || !throttle('flame', 90)) return;
+    noise({ dur: 0.22, vol: 0.32, type: 'bandpass', freq: rand(350, 600), q: 0.8, attack: 0.02, pos });
+  },
+  fireWhoosh(pos) {
+    if (!ready()) return;
+    noise({ dur: 0.8, vol: 0.7, type: 'lowpass', freq: 900, freqEnd: 200, attack: 0.03, pos });
+  },
+  inject(pos) {
+    if (!ready()) return;
+    noise({ dur: 0.25, vol: 0.25, type: 'highpass', freq: 2500, pos });
+    tone({ freq: 700, freqEnd: 1100, dur: 0.18, vol: 0.06, type: 'sine', pos });
+  },
   ui() {
     if (!ready()) return;
     tone({ freq: 900, dur: 0.05, vol: 0.06, type: 'sine' });

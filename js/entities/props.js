@@ -1,7 +1,7 @@
 // Предметы: ящики, бочки, кирпичи, арбуз, стекло, мячи, балки и т.д.
 import { Entity, visPoly, visCircle, visRRect, V, CAT } from './base.js';
 import { polyShape, circleShape } from '../sim.js';
-import { R, rand, pick, chance, TAU, shade, polyArea, circleOutline, roundRectPath } from '../util.js';
+import { R, rand, pick, chance, TAU, shade, mix, polyArea } from '../util.js';
 import { sfx } from '../audio.js';
 
 function ellipsePts(rx, ry, n = 12) {
@@ -214,6 +214,15 @@ export class Prop extends Entity {
 
   onBlast(body, dmg) { this.damage(dmg * 1.5, 'blast'); }
 
+  onBurn(body, dt) {
+    if (this.def.mat === 'wood') this.damage(dt * 6, 'burn');
+    this.charred = Math.min(1, (this.charred || 0) + dt * 0.05);
+  }
+
+  colorOf(v) {
+    return this.charred > 0.05 ? mix(v.color, '#1d1510', this.charred * 0.8) : v.color;
+  }
+
   shatter() {
     if (this.removed) return;
     const b = this.main;
@@ -224,12 +233,14 @@ export class Prop extends Entity {
     const d = this.def;
     sim.remove(this);
     const fx = sim.effects;
+    const fire = b.getUserData().fire || 0;
     const spawn = (lx, ly, def, ang = a) => {
       const c = Math.cos(a), s = Math.sin(a);
       const e = new Prop(sim, p.x + lx * c - ly * s, p.y + lx * s + ly * c, null, 1, { def, angle: ang, debris: true });
       e.setVelocity(v.x + rand(-1.5, 1.5), v.y + rand(-2, 0.5));
       e.main.setAngularVelocity(rand(-4, 4));
       sim.add(e);
+      if (fire > 0) sim.ignite(e.main, fire + 2);
     };
     switch (d.debris) {
       case 'planks': {

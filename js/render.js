@@ -155,6 +155,7 @@ export class Renderer {
       ctx.globalCompositeOperation = 'source-over';
     }
     if (worldDef.drawLights) worldDef.drawLights(this, sim.time);
+    sim.effects.drawGlow(this);
     sim.effects.drawLights(this);
     const glow = sim.effects.nukeGlow;
     if (glow > 0) {

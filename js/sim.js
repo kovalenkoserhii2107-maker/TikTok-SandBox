@@ -24,6 +24,9 @@ export const MAT = {
   melon: { pen: 0.6, hit: 'juice', snd: 'melon' },
 };
 
+// Горючесть материалов (0 — не горит).
+export const FLAMMABLE = { wood: 1, plastic: 0.8, rubber: 0.7, flesh: 0.55, zombie: 0.6, bone: 0.15, melon: 0.05 };
+
 export const V = (x, y) => new pl.Vec2(x, y);
 export const polyShape = (pts) => new pl.Polygon(pts.map((p) => new pl.Vec2(p[0], p[1])));
 export const boxShape = (hw, hh, cx = 0, cy = 0, a = 0) => new pl.Box(hw, hh, new pl.Vec2(cx, cy), a);
@@ -57,6 +60,8 @@ export class Sim {
     this.halfWidth = 75;
     this.effects = new Effects(this);
     this.onBodyDestroyed = null;
+    this.burning = new Set();
+    this.groundFires = [];
     this.makeGround();
     this.world.on('begin-contact', (c) => this._begin(c));
     this.world.on('post-solve', (c, imp) => this._post(c, imp));
@@ -90,7 +95,98 @@ export class Sim {
     });
   }
 
+  // ---------- Огонь ----------
+  flammability(body) {
+    const ud = body.getUserData();
+    if (!ud || !ud.ent || ud.ground) return 0;
+    if (ud.ent.flammability) return ud.ent.flammability(body);
+    const f = body.getFixtureList();
+    const mat = f && f.getUserData() && f.getUserData().mat;
+    return FLAMMABLE[mat] || 0;
+  }
+
+  ignite(body, dur = 7) {
+    if (!body || this.silent) return false;
+    const ud = body.getUserData();
+    if (!ud || !ud.ent || ud.ent.removed) return false;
+    const fl = this.flammability(body);
+    if (fl <= 0) return false;
+    const d = dur * (0.5 + fl * 0.7) * (this.def.noAir ? 0.25 : 1);
+    if ((ud.fire || 0) < d) ud.fire = d;
+    this.burning.add(body);
+    return true;
+  }
+
+  extinguish(body) {
+    const ud = body.getUserData();
+    if (ud) ud.fire = 0;
+    this.burning.delete(body);
+  }
+
+  addGroundFire(x, r = 1.5, t = 6) {
+    if (this.silent) return;
+    for (const g of this.groundFires) {
+      if (Math.abs(g.x - x) < r * 0.6) { g.t = Math.max(g.t, t); g.r = Math.max(g.r, r); return; }
+    }
+    if (this.groundFires.length > 24) this.groundFires.shift();
+    this.groundFires.push({ x, r, t, tick: 0 });
+    this.effects.decal(x, rand(-0.3, 0.3), r * 0.8, '#1a120c', 0.6, 'scorch');
+  }
+
+  updateFire(dt) {
+    const fx = this.effects;
+    const q = fx.quality;
+    for (const b of this.burning) {
+      const ud = b.getUserData();
+      if (!ud || !ud.ent || ud.ent.removed || !(ud.fire > 0)) {
+        this.burning.delete(b);
+        if (ud) ud.fire = 0;
+        continue;
+      }
+      ud.fire -= dt;
+      const c = b.getWorldCenter();
+      const r = ud.ent.shadowR(b);
+      let n = dt * 30 * q * Math.min(2, 0.4 + r);
+      while (n > 0) {
+        if (n < 1 && Math.random() > n) break;
+        n -= 1;
+        fx.flame(c.x + rand(-r, r) * 0.8, c.y + rand(-r, r) * 0.5, rand(0.12, 0.28) * Math.min(2, 0.6 + r));
+      }
+      if (Math.random() < dt * 4) fx.smokePuff(c.x, c.y - r, 0.25 + r * 0.3, '#3a3633', 0.4);
+      if (Math.random() < dt * 6) fx.light(c.x, c.y, 1.5 + r, 0.2, '#ff9a40');
+      if (ud.ent.onBurn) ud.ent.onBurn(b, dt);
+      // Распространение на соприкасающиеся тела.
+      for (let ce = b.getContactList(); ce; ce = ce.next) {
+        if (ce.contact.isTouching() && Math.random() < dt * 0.9) this.ignite(ce.other, 6);
+      }
+    }
+    for (let i = this.groundFires.length - 1; i >= 0; i--) {
+      const g = this.groundFires[i];
+      g.t -= dt;
+      if (g.t <= 0) { this.groundFires.splice(i, 1); continue; }
+      const k = Math.min(1, g.t / 2);
+      let n = dt * 20 * q * g.r * k;
+      while (n > 0) {
+        if (n < 1 && Math.random() > n) break;
+        n -= 1;
+        fx.add({ type: 'fire', x: g.x + rand(-g.r, g.r), y: -0.05, z: rand(-0.8, 0.8), vx: rand(-0.3, 0.3), vy: rand(-2.2, -0.8), life: rand(0.3, 0.7), size: rand(0.16, 0.36) * k, grow: -0.15, g: 0 });
+      }
+      if (Math.random() < dt * 5) fx.light(g.x, -0.5, 2 + g.r, 0.25, '#ff9040');
+      if (Math.random() < dt * 3) fx.smokePuff(g.x + rand(-g.r, g.r), -1, 0.4, '#3a3633', 0.35);
+      g.tick -= dt;
+      if (g.tick <= 0) {
+        g.tick = 0.25;
+        this.world.queryAABB(new pl.AABB(V(g.x - g.r, -0.9), V(g.x + g.r, 0.1)), (fix) => {
+          this.ignite(fix.getBody(), 6);
+          return true;
+        });
+      }
+    }
+  }
+
   clear() {
+    this.burning.clear();
+    this.groundFires.length = 0;
     for (const e of this.entities.slice()) {
       e.removed = true;
       e.destroy();
@@ -142,6 +238,7 @@ export class Sim {
     }
     for (const e of this.entities) if (!e.removed) e.update(dt);
     this.runTimers();
+    this.updateFire(dt);
     this.flush();
     this.effects.update(dt);
   }
@@ -178,6 +275,7 @@ export class Sim {
       const l = this.links[i];
       if (l.joint.getBodyA() === body || l.joint.getBodyB() === body) this.killLink(l);
     }
+    this.burning.delete(body);
     if (this.onBodyDestroyed) this.onBodyDestroyed(body);
     this.world.destroyBody(body);
   }
@@ -309,6 +407,7 @@ export class Sim {
         b.applyAngularImpulse(rand(-1, 1) * J * 0.02, true);
       }
       if (ud.ent && !ud.ent.removed) ud.ent.onBlast(b, P * 120 * fall, nx, ny, fall, P, o);
+      if ((o.nuke && fall > 0.08) || (P >= 1 && fall > 0.4 && Math.random() < fall)) this.ignite(b, o.nuke ? 12 : 5);
     }
     if (o.nuke) {
       // Обратная тяга воздуха после ударной волны.
