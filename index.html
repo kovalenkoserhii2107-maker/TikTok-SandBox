@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Kaboom Sandbox</title>
+  <meta name="description" content="Физическая песочница 2.5D: персонажи, оружие, взрывчатка, техника и замедление времени.">
+  <meta name="theme-color" content="#0e1116">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kaboom">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="topbar">
+      <button id="btnMenu" class="ic" aria-label="Меню"></button>
+      <div class="spacer"></div>
+      <div class="slowmo">
+        <button id="btnSlow" class="pill" aria-label="Замедление времени"></button>
+        <button id="btnSlowPick" class="chev" aria-label="Скорость">▾</button>
+      </div>
+      <button id="btnPause" class="ic" aria-label="Пауза"></button>
+      <button id="btnClear" class="ic" aria-label="Очистить сцену"></button>
+    </div>
+    <div id="speedPick" class="popover hidden">
+      <span>Скорость времени</span>
+      <button data-v="0.5">0.5×</button>
+      <button data-v="0.25">0.25×</button>
+      <button data-v="0.1">0.1×</button>
+      <button data-v="0.03">0.03×</button>
+    </div>
+
+    <div id="tools" class="tools"></div>
+
+    <button id="btnDetonate" class="det hidden">Детонатор</button>
+    <button id="btnSpawn" class="fab"></button>
+
+    <div id="placeBar" class="placebar hidden">
+      <canvas id="placeThumb" width="120" height="84"></canvas>
+      <div class="ptxt"><b id="placeName"></b><small id="placeDesc"></small></div>
+      <button id="placeFlip" class="ic sm" aria-label="Развернуть"></button>
+      <button id="placeClose" class="ic sm" aria-label="Готово"></button>
+    </div>
+
+    <div id="drive" class="drive hidden">
+      <div class="dleft">
+        <button id="dLeft" class="dbtn" aria-label="Назад"></button>
+        <button id="dRight" class="dbtn" aria-label="Вперёд"></button>
+      </div>
+      <div class="dname"><b id="driveName"></b><button id="dExit" class="ic sm" aria-label="Выйти"></button></div>
+      <div class="dright">
+        <button id="dUp" class="dbtn sm tankonly" aria-label="Ствол вверх"></button>
+        <button id="dDown" class="dbtn sm tankonly" aria-label="Ствол вниз"></button>
+        <button id="dMg" class="dbtn act tankonly"></button>
+        <button id="dFire" class="dbtn act red tankonly"></button>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+  </div>
+
+  <div id="catalog" class="sheetwrap hidden">
+    <div class="sheet">
+      <div class="sheethead">
+        <div id="catTabs" class="tabs"></div>
+        <button id="catClose" class="ic sm" aria-label="Закрыть"></button>
+      </div>
+      <div id="catGrid" class="grid"></div>
+    </div>
+  </div>
+
+  <div id="menu" class="drawerwrap hidden">
+    <div class="drawer">
+      <div class="drawhead"><div class="logo small"><span>KABOOM</span> SANDBOX</div><button id="menuClose" class="ic sm" aria-label="Закрыть"></button></div>
+      <h3>Мир</h3>
+      <div id="worldList" class="worlds"></div>
+      <h3>Настройки</h3>
+      <label class="opt"><span>Звук</span><input type="checkbox" id="optSound"><i></i></label>
+      <label class="opt"><span>Кровь</span><input type="checkbox" id="optBlood"><i></i></label>
+      <label class="opt"><span>Высокое качество</span><input type="checkbox" id="optQuality"><i></i></label>
+      <label class="opt"><span>Камера следует за техникой</span><input type="checkbox" id="optFollow"><i></i></label>
+      <div class="mbtns">
+        <button id="btnInstall" class="wide accent">Установить на телефон</button>
+        <button id="btnFull" class="wide">На весь экран</button>
+        <button id="btnHelp" class="wide">Как играть</button>
+        <button id="btnWipe" class="wide danger">Удалить всё со сцены</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="help" class="modal hidden">
+    <div class="card">
+      <h2>Как играть</h2>
+      <ul class="howto">
+        <li><b>Создать</b> — выбери объект и нажми на сцену. Кнопка ↔ разворачивает его.</li>
+        <li><b>Рука</b> — тяни объекты и бросай. Короткое нажатие активирует: выстрел, таймер гранаты, руль техники.</li>
+        <li><b>Вращение</b> — держи объект одним пальцем, вторым крути. На ПК — Q / E.</li>
+        <li><b>Оружие в руки</b> — отпусти оружие рядом с рукой персонажа. Солдат сам стреляет по зомби.</li>
+        <li><b>Камера</b> — тяни пустое место, щипок — масштаб.</li>
+        <li><b>Замедление</b> — кнопка с часами, ▾ — выбор скорости.</li>
+        <li><b>Заморозить, Верёвка, Сварка, Лечить, Удалить</b> — инструменты слева.</li>
+        <li><b>ПК</b>: пробел — пауза, T — замедление, стрелки — техника, F — огонь.</li>
+      </ul>
+      <button id="helpClose" class="wide accent">Понятно</button>
+    </div>
+  </div>
+
+  <div id="start" class="start">
+    <div class="startcard">
+      <div class="logo"><span>KABOOM</span> SANDBOX</div>
+      <p class="tag">Физическая песочница 2.5D — персонажи, оружие, взрывы, техника, замедление времени</p>
+      <h3>Выбери мир</h3>
+      <div id="startWorlds" class="worlds"></div>
+      <button id="btnPlay" class="play">Играть</button>
+    </div>
+  </div>
+
+  <div id="install" class="modal hidden" data-mode="android">
+    <div class="card install">
+      <img src="icons/icon-192.png" alt="" class="appicon">
+      <h2>Установи Kaboom Sandbox</h2>
+      <p>Игра откроется на весь экран, с иконкой на главном экране, и будет работать без интернета.</p>
+      <ol class="steps ios">
+        <li>Нажми <b>«Поделиться»</b>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4M5 12v7h14v-7"/></svg>
+          внизу экрана Safari</li>
+        <li>Прокрути и выбери <b>«На экран „Домой“»</b>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg></li>
+        <li>Нажми <b>«Добавить»</b> — иконка появится на рабочем столе</li>
+      </ol>
+      <ol class="steps manual">
+        <li>Открой меню браузера <b>⋮</b> (в правом верхнем углу)</li>
+        <li>Выбери <b>«Установить приложение»</b> или <b>«Добавить на главный экран»</b></li>
+        <li>Подтверди — иконка появится на рабочем столе</li>
+      </ol>
+      <p class="hint desktop">В Chrome или Edge нажми значок установки в адресной строке.</p>
+      <button id="instAction" class="wide accent">Установить</button>
+      <button id="instLater" class="wide">Не сейчас</button>
+    </div>
+  </div>
+
+  <script src="js/lib/planck.min.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
