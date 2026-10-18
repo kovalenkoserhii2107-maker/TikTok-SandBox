@@ -356,3 +356,174 @@ export class ShockPlate extends Machine {
     r.screen();
   }
 }
+
+// Вентилятор: поток воздуха сдувает всё перед собой.
+export class Fan extends Machine {
+  constructor(sim, x, y, f = 1) {
+    super(sim);
+    this.name = 'Вентилятор';
+    this.facing = f;
+    this.bladeAngle = 0;
+    this.spin = 0;
+    const b = this.makeBody(x, y, 0);
+    const v = this.box(b, R(-0.25, -0.45, 0.25, 0.45), 90, '#37474f', { t: 0.6, tex: 'metal' });
+    v.detail = (ctx) => {
+      ctx.strokeStyle = '#263238'; ctx.lineWidth = 0.04;
+      ctx.strokeRect(-0.23, -0.43, 0.46, 0.86);
+      // Лопасти (вид спереди — размытый диск при вращении).
+      ctx.save();
+      ctx.rotate(this.bladeAngle);
+      ctx.fillStyle = this.spin > 0.5 ? 'rgba(144,164,174,0.55)' : '#90a4ae';
+      for (let i = 0; i < 4; i++) {
+        ctx.rotate(Math.PI / 2);
+        ctx.beginPath(); ctx.ellipse(0, -0.18, 0.06, 0.17, 0, 0, TAU); ctx.fill();
+      }
+      ctx.restore();
+      ctx.fillStyle = '#263238';
+      ctx.beginPath(); ctx.arc(0, 0, 0.06, 0, TAU); ctx.fill();
+      ctx.fillStyle = this.on ? '#00e5ff' : '#546e7a';
+      ctx.beginPath(); ctx.arc(0.17 * this.facing, -0.38, 0.03, 0, TAU); ctx.fill();
+      // Стрелка — куда дует.
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 0.025;
+      ctx.beginPath(); ctx.moveTo(-0.12 * this.facing, 0.36); ctx.lineTo(0.12 * this.facing, 0.36); ctx.lineTo(0.06 * this.facing, 0.31); ctx.stroke();
+    };
+  }
+
+  dir() { return this.main.getWorldVector(V(this.facing, 0)); }
+
+  preStep() {
+    if (!this.on) return;
+    const b = this.main, p = b.getPosition(), dir = this.dir();
+    for (const e of this.sim.entities) {
+      if (e === this || e.removed) continue;
+      for (const ob of e.bodies) {
+        if (!ob.isDynamic() || ob === b) continue;
+        const op = ob.getPosition();
+        const dx = op.x - p.x, dy = op.y - p.y;
+        const along = dx * dir.x + dy * dir.y;
+        const perp = Math.abs(-dx * dir.y + dy * dir.x);
+        if (along > 0.2 && along < 10 && perp < 1.3) {
+          const acc = 26 * (1 - along / 10) * (1 - perp / 1.6);
+          const m = ob.getMass();
+          ob.applyForceToCenter(V(dir.x * acc * m, dir.y * acc * m), true);
+        }
+      }
+    }
+  }
+
+  update(dt) {
+    this.spin += ((this.on ? 1 : 0) - this.spin) * Math.min(1, dt * 3);
+    this.bladeAngle += dt * 30 * this.spin;
+    if (!this.on) return;
+    const b = this.main, p = b.getPosition(), dir = this.dir();
+    if (Math.random() < dt * 5) sfx.fan(p);
+    this.sim.effects.wind(p.x + dir.x * 0.4, p.y + dir.y * 0.4, dir.x, dir.y, 12);
+  }
+}
+
+// Конвейер: лента тянет всё, что на ней лежит.
+export class Conveyor extends Machine {
+  constructor(sim, x, y, f = 1) {
+    super(sim);
+    this.name = 'Конвейер';
+    this.facing = f;
+    this.texOffset = 0;
+    this.speed = 3;
+    const b = this.makeBody(x, y, 0);
+    const v = this.box(b, R(-1.5, -0.12, 1.5, 0.12), 120, '#263238', { t: 0.8, tex: 'metal' });
+    v.detail = (ctx) => {
+      ctx.fillStyle = '#ffc107';
+      const off = ((this.texOffset % 0.4) + 0.4) % 0.4;
+      for (let x0 = -1.4 + off; x0 < 1.4; x0 += 0.4) {
+        ctx.beginPath();
+        ctx.moveTo(x0, -0.1); ctx.lineTo(x0 + 0.12, -0.1);
+        ctx.lineTo(x0 + 0.04, 0.1); ctx.lineTo(x0 - 0.08, 0.1);
+        ctx.fill();
+      }
+      ctx.fillStyle = this.on ? '#4caf50' : '#d32f2f';
+      ctx.beginPath(); ctx.arc(1.38 * this.facing, 0, 0.04, 0, TAU); ctx.fill();
+    };
+  }
+
+  preStep(h) {
+    if (!this.on) return;
+    const b = this.main;
+    const dir = b.getWorldVector(V(this.facing, 0));
+    const bv = b.getLinearVelocity();
+    for (let ce = b.getContactList(); ce; ce = ce.next) {
+      if (!ce.contact.isTouching()) continue;
+      const ob = ce.other;
+      if (!ob.isDynamic() || ce.contact.getFixtureA().isSensor() || ce.contact.getFixtureB().isSensor()) continue;
+      // Скорость вдоль ленты тянется к скорости ленты.
+      const v = ob.getLinearVelocity();
+      const rel = (v.x - bv.x) * dir.x + (v.y - bv.y) * dir.y;
+      const dv = Math.max(-1, Math.min(1, this.speed - rel)) * Math.min(1, h * 12) * this.speed;
+      ob.applyLinearImpulse(V(dir.x * dv * ob.getMass() * 0.5, dir.y * dv * ob.getMass() * 0.5), ob.getWorldCenter(), true);
+    }
+  }
+
+  update(dt) {
+    if (this.on) this.texOffset += dt * this.speed * this.facing;
+  }
+
+  menu() {
+    return [{ label: 'Сменить направление', icon: '🔄', fn: () => { this.facing = -this.facing; } }];
+  }
+}
+
+// Электромагнит: притягивает металл — оружие, технику, роботов, металлические предметы.
+export class Magnet extends Machine {
+  constructor(sim, x, y) {
+    super(sim);
+    this.name = 'Электромагнит';
+    const b = this.makeBody(x, y, 0);
+    const v = this.box(b, R(-0.35, -0.35, 0.35, 0.35), 110, '#37474f', { t: 0.7, tex: 'metal' });
+    v.detail = (ctx) => {
+      ctx.fillStyle = '#ff8f00';
+      ctx.fillRect(-0.25, -0.28, 0.5, 0.56);
+      ctx.strokeStyle = '#e65100'; ctx.lineWidth = 0.03;
+      for (let y0 = -0.25; y0 <= 0.25; y0 += 0.08) {
+        ctx.beginPath(); ctx.moveTo(-0.25, y0); ctx.lineTo(0.25, y0); ctx.stroke();
+      }
+      ctx.fillStyle = '#78909c';
+      ctx.fillRect(-0.12, -0.34, 0.24, 0.68);
+      ctx.fillStyle = this.on ? '#00e5ff' : '#1a237e';
+      ctx.beginPath(); ctx.arc(0, 0, 0.06, 0, TAU); ctx.fill();
+    };
+  }
+
+  static isMetal(e, b) {
+    if (e.isWeapon || e.isVehicle || e.chassis || e.isExplosive) return true;
+    if (e.isRagdoll) return !!(e.type.robot || e.type.cyborg || e.type.heavyArmor || e.type.knightHelm);
+    const f = b.getFixtureList();
+    const mat = f && f.getUserData() && f.getUserData().mat;
+    return mat === 'metal' || mat === 'armor';
+  }
+
+  preStep() {
+    if (!this.on) return;
+    const b = this.main, p = b.getPosition();
+    for (const e of this.sim.entities) {
+      if (e === this || e.removed) continue;
+      for (const ob of e.bodies) {
+        if (!ob.isDynamic() || ob === b || !Magnet.isMetal(e, ob)) continue;
+        const op = ob.getPosition();
+        const dx = p.x - op.x, dy = p.y - op.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 0.3 || d > 9) continue;
+        const acc = Math.min(45, 30 * (1 - d / 9) / Math.max(0.5, d * 0.5));
+        const m = ob.getMass();
+        ob.applyForceToCenter(V((dx / d) * acc * m, (dy / d) * acc * m), true);
+        // Отдача на сам магнит (если он не заморожен).
+        if (b.isDynamic()) b.applyForceToCenter(V(-(dx / d) * acc * m * 0.3, -(dy / d) * acc * m * 0.3), true);
+      }
+    }
+  }
+
+  update(dt) {
+    if (!this.on) return;
+    const p = this.main.getPosition();
+    if (Math.random() < dt * 3) sfx.zap(p);
+    if (Math.random() < dt * 8) this.sim.effects.sparks(p.x + rand(-0.3, 0.3), p.y + rand(-0.3, 0.3), 1, 0.4);
+  }
+}

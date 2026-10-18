@@ -235,7 +235,8 @@ class Game {
   // Постройка из многих блоков: ставится на землю, отменяется целиком.
   build(item, x) {
     const parts = item.build(x);
-    const ents = parts.map(([id, px, py]) => this.place(findItem(id === 'crate' ? 'props' : 'hidden', id), px, py, 1, { noLift: true, noHistory: true }));
+    const ents = parts.map(([id, px, py]) => this.place(findItem('hidden', id) || findItem('props', id), px, py, 1, { noLift: true, noHistory: true }));
+    if (item.links) item.links(ents, this.sim);
     ents.name = item.name;
     this.history.push(ents);
     this.sim.effects.dust(x, -0.2, 8, 'rgba(255,255,255,0.6)', 0.4);

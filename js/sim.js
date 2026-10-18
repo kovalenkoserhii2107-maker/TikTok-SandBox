@@ -170,6 +170,18 @@ export class Sim {
         b.applyTorque(-b.getAngularVelocity() * b.getInertia() * sub * 3, true);
         if (!was && ud.wet && v.y > 2.5 && !this.silent) this.effects.splash(c.x, w.top, Math.min(1.5, v.y / 8) * Math.sqrt(wid));
         if (sub > 0.35 && ud.fire > 0) this.extinguish(b);
+        if (pool.def.acid && sub > 0.08) {
+          const e = ud.ent;
+          if (e.isRagdoll) {
+            const part = e.partOf(b);
+            if (part && !part.gone) e.damage(part, h * 65 * sub, 'acid');
+            e.acid = Math.max(e.acid, 3);
+          } else if (e.damage) e.damage(h * 40 * sub, 'acid', b, c);
+          if (Math.random() < h * 12) {
+            this.effects.acidSpray(c.x, w.top, 0, -1, 3, 1.2);
+            sfx.acidSizzle(c);
+          }
+        }
         return true;
       });
     }

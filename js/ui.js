@@ -323,7 +323,7 @@ export class UI {
     const sim = new Sim(this.game.worldDef, { silent: true });
     try {
       const ents = it.build
-        ? it.build(0).map(([id, px, py]) => findItem(id === 'crate' ? 'props' : 'hidden', id).make(sim, px, py, 1))
+        ? it.build(0).map(([id, px, py]) => (findItem('hidden', id) || findItem('props', id)).make(sim, px, py, 1))
         : [it.make(sim, 0, -3, f)];
       const a = { lx: Infinity, ly: Infinity, ux: -Infinity, uy: -Infinity };
       for (const e of ents) {

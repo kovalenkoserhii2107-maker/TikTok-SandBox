@@ -4,8 +4,9 @@ import { Prop } from './entities/props.js';
 import { Firearm, Melee } from './entities/weapons.js';
 import { Explosive } from './entities/explosives.js';
 import { Vehicle } from './entities/vehicles.js';
-import { Button, Timer, Laser, Motor, Piston, Lamp, ShockPlate } from './entities/machines.js';
+import { Button, Timer, Laser, Motor, Piston, Lamp, ShockPlate, Fan, Conveyor, Magnet } from './entities/machines.js';
 import { Pool } from './entities/water.js';
+import { makeLink } from './links.js';
 import { Helicopter, Plane, Turret } from './entities/aircraft.js';
 
 const rd = (type) => (sim, x, y, f) => new Ragdoll(sim, x, y, type, f);
@@ -27,6 +28,10 @@ export const CATEGORIES = [
       { id: 'fighterRed', name: 'Боец (красные)', desc: 'Дерётся руками и ногами с синими и зомби. Дай оружие — будет стрелять.', make: (s, x, y, f) => { const r = new Ragdoll(s, x, y, 'fighter', f); r.setTeam('red'); return r; } },
       { id: 'fighterBlue', name: 'Боец (синие)', desc: 'Дерётся с красными и зомби. Команду можно поменять в меню объекта.', make: (s, x, y, f) => { const r = new Ragdoll(s, x, y, 'fighter', f); r.setTeam('blue'); return r; } },
       { id: 'dummy', name: 'Манекен', desc: 'Краш-тест манекен: бессмертный, без мышц, для экспериментов.', make: rd('dummy') },
+      { id: 'juggernaut', name: 'Джаггернаут', desc: 'Тяжелейшая броня, пули рикошетят с искрами. Огромная стойкость.', make: rd('juggernaut') },
+      { id: 'mutant', name: 'Мутант', desc: 'Огромный зелёный громила. Сносит и швыряет всё на своём пути.', make: rd('mutant') },
+      { id: 'cyborg', name: 'Киборг', desc: 'Красный глаз, стальной скелет, масло вместо крови. Прочный и беспощадный.', make: rd('cyborg') },
+      { id: 'knight', name: 'Рыцарь', desc: 'Стальные латы и шлем с забралом. Защищён от ударов и пуль.', make: rd('knight') },
     ],
   },
   {
@@ -41,6 +46,10 @@ export const CATEGORIES = [
       { id: 'minigun', name: 'Миниган', desc: 'Раскручивается и сносит всё. Тяжёлый.', make: gun('minigun') },
       { id: 'rpg', name: 'Ракетница', desc: 'Реактивная граната, взрыв при попадании.', make: gun('rpg') },
       { id: 'flamer', name: 'Огнемёт', desc: 'Струя огня на 7 м. Поджигает людей, дерево, технику.', make: gun('flamer') },
+      { id: 'railgun', name: 'Рельсотрон', desc: 'Сверхмощный электромагнитный луч, пробивает любые стены и толпы.', make: gun('railgun') },
+      { id: 'sawnoff', name: 'Двустволка', desc: 'Разрушительный залп из 16 дробин. Огромный разлёт и отдача.', make: gun('sawnoff') },
+      { id: 'crossbow', name: 'Арбалет', desc: 'Стреляет тяжёлыми болтами, которые втыкаются и прибивают к стенам.', make: gun('crossbow') },
+      { id: 'tesla', name: 'Тесла-пушка', desc: 'Электрическая дуга бьёт молнией и шокирует цели током.', make: gun('tesla') },
     ],
   },
   {
@@ -51,6 +60,8 @@ export const CATEGORIES = [
       { id: 'spear', name: 'Копьё', desc: 'Длинное, пронзает насквозь.', make: mel('spear') },
       { id: 'bat', name: 'Бита', desc: 'Тупой удар, оглушает.', make: mel('bat') },
       { id: 'hammer', name: 'Кувалда', desc: '7 кг стали — ломает кости.', make: mel('hammer') },
+      { id: 'chainsaw', name: 'Бензопила', desc: 'Ревёт мотором и непрерывно режет плоть и дерево на куски.', make: mel('chainsaw') },
+      { id: 'shield', name: 'Щит ОМОН', desc: 'Баллистический щит: держит пули, взрывы и удары.', make: mel('shield') },
     ],
   },
   {
@@ -63,6 +74,9 @@ export const CATEGORIES = [
       { id: 'barrel', name: 'Взрывная бочка', desc: 'Взрывается от пуль, огня и сильных ударов. Нажми — взорвётся сразу.', make: ex('barrel') },
       { id: 'bomb', name: 'Авиабомба', desc: 'Нажми — взведётся и взорвётся от удара: подними повыше и брось. Или поставь таймер в меню.', make: ex('bomb') },
       { id: 'nuke', name: 'Ядерная бомба', desc: 'Нажми — таймер 5 с, потом сносит всё. Время таймера — в меню (подержи палец).', make: ex('nuke') },
+      { id: 'blackHole', name: 'Чёрная дыра', desc: 'Сингулярность: засасывает тела и предметы в центр, затем взрывается.', make: ex('blackHole') },
+      { id: 'gasGrenade', name: 'Газовая граната', desc: 'Облако ядовитого газа — удушье и смерть для живых.', make: ex('gasGrenade') },
+      { id: 'clusterBomb', name: 'Кассетная бомба', desc: 'Взрывается и рассыпает 7 прыгающих мини-гранат.', make: ex('clusterBomb') },
     ],
   },
   {
@@ -72,6 +86,9 @@ export const CATEGORIES = [
       { id: 'syrZombie', name: 'Зомби-вирус', desc: 'Через пару секунд превращает человека в зомби.', make: mel('syrZombie') },
       { id: 'syrPoison', name: 'Яд', desc: 'Судороги и смерть за несколько секунд.', make: mel('syrPoison') },
       { id: 'syrCryo', name: 'Криозаморозка', desc: 'Замораживает в статую на 15 с. Ударишь — расколется.', make: mel('syrCryo') },
+      { id: 'syrAcid', name: 'Кислота', desc: 'Растворяет кожу, мышцы и плоть до костей с шипением.', make: mel('syrAcid') },
+      { id: 'syrAntiGrav', name: 'Антигравитация', desc: 'Обнуляет гравитацию тела — персонаж взмывает вверх.', make: mel('syrAntiGrav') },
+      { id: 'syrSuper', name: 'Супер-сыворотка', desc: 'Увеличивает силу втрое, даёт адреналин и бессмертие.', make: mel('syrSuper') },
     ],
   },
   {
@@ -84,6 +101,9 @@ export const CATEGORIES = [
       { id: 'piston', name: 'Поршень', desc: 'Резко выталкивает платформу вверх — катапульта. Сигнал — вверх/вниз.', make: (s, x, y) => new Piston(s, x, y) },
       { id: 'lamp', name: 'Лампа', desc: 'Светит. Сигнал — вкл/выкл.', make: (s, x, y) => new Lamp(s, x, y) },
       { id: 'shock', name: 'Электрошокер', desc: 'Плита под напряжением: бьёт током всех, кто касается. Сигнал — вкл/выкл.', make: (s, x, y) => new ShockPlate(s, x, y) },
+      { id: 'fan', name: 'Вентилятор', desc: 'Сдувает всё перед собой мощным потоком ветра. Сигнал — вкл/выкл.', make: (s, x, y, f) => new Fan(s, x, y, f) },
+      { id: 'conveyor', name: 'Конвейер', desc: 'Движущаяся лента — перемещает предметы и тела. Сигнал — вкл/выкл.', make: (s, x, y, f) => new Conveyor(s, x, y, f) },
+      { id: 'magnet', name: 'Электромагнит', desc: 'Притягивает все металлические предметы и роботов. Сигнал — вкл/выкл.', make: (s, x, y) => new Magnet(s, x, y) },
     ],
   },
   {
@@ -110,6 +130,11 @@ export const CATEGORIES = [
       { id: 'ball', name: 'Мяч', desc: 'Прыгучий.', make: pr('ball') },
       { id: 'tire', name: 'Покрышка', desc: 'Резиновая, отскакивает.', make: pr('tire') },
       { id: 'platform', name: 'Платформа', desc: 'Неподвижная опора.', make: pr('platform') },
+      { id: 'anvil', name: 'Наковальня', desc: 'Тяжелейшая стальная наковальня — плющит всё, на что падает.', make: pr('anvil') },
+      { id: 'acidBarrel', name: 'Бочка с кислотой', desc: 'При разрушении разливает едкую шипящую кислоту.', make: pr('acidBarrel') },
+      { id: 'trampoline', name: 'Батут', desc: 'Пружинит и запускает любые тела и предметы в воздух.', make: pr('trampoline') },
+      { id: 'spikes', name: 'Шипы', desc: 'Стальные шипы — пронзают любого, кто на них приземлится.', make: pr('spikes') },
+      { id: 'target', name: 'Мишень', desc: 'Мишень для стрельбы с цветными кругами.', make: pr('target') },
     ],
   },
 ];
@@ -153,6 +178,39 @@ function buildHouse(x) {
   return out;
 }
 
+
+// Подвесной мост: бетонные опоры и настил из досок на шарнирах.
+// Людей держит, под тяжёлой техникой доски ломаются и мост рушится.
+const BRIDGE_PLANKS = 4;
+function buildBridge(x) {
+  const out = [];
+  for (const side of [-1, 1]) for (let r = 0; r < 3; r++) out.push(['concrete', x + side * 4.7, -0.3 - r * 0.6]);
+  for (let i = 0; i < BRIDGE_PLANKS; i++) out.push(['plank', x + (i - (BRIDGE_PLANKS - 1) / 2) * 2.1, -1.84]);
+  return out;
+}
+function linkBridge(ents, sim) {
+  // Блоки опоры свариваем в монолит, настил вешаем на шарнирах с небольшим провисом.
+  for (const k of [0, 3]) for (let r = 0; r < 2; r++) makeLink(sim, 'weld', ents[k + r].main, { x: 0, y: -0.3 }, ents[k + r + 1].main, { x: 0, y: 0.3 });
+  const tops = [ents[2], ents[5]];
+  const planks = ents.slice(6);
+  const hinge = (a, la, b, lb) => makeLink(sim, 'hinge', a.main, la, b.main, lb);
+  hinge(tops[0], { x: 0.6, y: -0.3 }, planks[0], { x: -1.05, y: 0 });
+  for (let i = 0; i < planks.length - 1; i++) hinge(planks[i], { x: 1.05, y: 0 }, planks[i + 1], { x: -1.05, y: 0 });
+  hinge(planks[planks.length - 1], { x: 1.05, y: 0 }, tops[1], { x: -0.6, y: -0.3 });
+}
+
+// Бункер: бетонные стены, бойница в правой стене, перекрытие и бетон сверху.
+function buildBunker(x) {
+  const out = [];
+  for (let r = 0; r < 3; r++) out.push(['concrete', x - 2.6, -0.3 - r * 0.6]);
+  out.push(['concrete', x + 2.6, -0.3]);
+  for (const dx of [-0.45, 0.45]) for (let r = 0; r < 2; r++) out.push(['halfBlock', x + 2.6 + dx, -0.75 - r * 0.3]);
+  out.push(['concrete', x + 2.6, -1.5]);
+  out.push(['slab', x, -1.92]);
+  for (const dx of [-1.25, 0, 1.25]) out.push(['concrete', x + dx, -2.34]);
+  out.push(['metalCrate', x, -0.5]);
+  return out;
+}
 function buildTower(x) {
   const out = [];
   for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) out.push(['crate', x + (c - 1) * 1.01, -0.5 - r * 1.005]);
@@ -166,6 +224,9 @@ CATEGORIES.splice(CATEGORIES.length - 1, 0, {
     { id: 'crateTower', name: 'Башня из ящиков', desc: '12 ящиков пирамидой — снеси её.', build: buildTower },
     { id: 'pool', name: 'Бассейн', desc: 'Вода 6 м: дерево всплывает, металл тонет, люди барахтаются и могут утонуть.', make: (s, x) => new Pool(s, x, 0, 'pool') },
     { id: 'tank', name: 'Аквариум', desc: 'Стеклянный бак с водой 3 м. Стекло можно разбить.', make: (s, x) => new Pool(s, x, 0, 'tank') },
+    { id: 'bridge', name: 'Подвесной мост', desc: 'Настил из досок на шарнирах между бетонными опорами. Людей держит, под техникой ломается.', build: buildBridge, links: linkBridge },
+    { id: 'bunker', name: 'Бункер', desc: 'Бетонные стены, бойница справа, перекрытие с бетоном сверху. Выдерживает гранаты.', build: buildBunker },
+    { id: 'acidPool', name: 'Бассейн с кислотой', desc: 'Глубокий резервуар с едкой кислотой — растворяет всё упавшее.', make: (s, x) => new Pool(s, x, 0, 'acidPool') },
   ],
 });
 CATEGORIES.push({

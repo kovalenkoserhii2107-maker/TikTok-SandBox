@@ -882,6 +882,211 @@ function drawStation(r, t) {
   groundFront(r, '#3a414c', '#9aa3ad');
 }
 
+
+// ---------------- Вулкан ----------------
+function volcanoLayout(rnd) {
+  const ridges = [], rocks = [], vents = [], ash = [];
+  for (let x = -900; x < 900; x += 60 + rnd() * 110) ridges.push({ x, w: 90 + rnd() * 140, h: 18 + rnd() * 30 });
+  for (let i = 0; i < 70; i++) rocks.push({ x: -150 + rnd() * 300, z: 3 + rnd() * 45, s: 0.4 + rnd() * 1.4 });
+  rocks.sort((a, b) => b.z - a.z);
+  for (let i = 0; i < 14; i++) vents.push({ x: -150 + rnd() * 300, z: 6 + rnd() * 40, ph: rnd() * TAU });
+  for (let i = 0; i < 120; i++) ash.push({ x: rnd(), y: rnd(), d: 0.3 + rnd() * 0.7, ph: rnd() * TAU, hot: rnd() < 0.25 });
+  return { ridges: per(ridges, 1800), rocks: per(rocks, 300), vents: per(vents, 300), ash };
+}
+
+function drawVolcano(r, t) {
+  const ctx = r.ctx;
+  const L = layout('volcano', volcanoLayout);
+  sky(r, ['#120306', '#3a0a0c', '#7a1a10', '#c2410c', '#f97316']);
+  // Главный вулкан вдали со светящимся жерлом и лавой.
+  const zv = 600;
+  r.face(zv);
+  // Гора привязана к камере, поэтому всегда на горизонте.
+  const vx = r.cam.x * 0.92 + 40, H = 85;
+  // Столб дыма над жерлом.
+  for (let i = 0; i < 8; i++) {
+    const yy = -H - 12 - i * 22 - ((t * 5) % 22);
+    ctx.fillStyle = `rgba(45,28,28,${0.55 - i * 0.06})`;
+    ctx.beginPath(); ctx.arc(vx + Math.sin(i + t * 0.3) * 10 + i * 7, yy, 22 + i * 8, 0, TAU); ctx.fill();
+  }
+  ctx.fillStyle = '#1d0a0b';
+  ctx.beginPath();
+  ctx.moveTo(vx - 230, 0); ctx.lineTo(vx - 34, -H); ctx.lineTo(vx + 34, -H); ctx.lineTo(vx + 230, 0);
+  ctx.closePath(); ctx.fill();
+  const glow = 0.75 + Math.sin(t * 2.3) * 0.15;
+  const lg = ctx.createRadialGradient(vx, -H, 2, vx, -H, 60);
+  lg.addColorStop(0, `rgba(255,170,60,${glow})`);
+  lg.addColorStop(1, 'rgba(255,80,20,0)');
+  ctx.fillStyle = lg;
+  ctx.beginPath(); ctx.arc(vx, -H, 60, 0, TAU); ctx.fill();
+  // Потоки лавы по склонам.
+  for (const [a, w] of [[-1, 9], [0.4, 7], [1.3, 6]]) {
+    ctx.fillStyle = `rgba(255,${Math.round(90 + glow * 60)},30,0.85)`;
+    ctx.beginPath();
+    ctx.moveTo(vx + a * 14 - w / 2, -H);
+    ctx.quadraticCurveTo(vx + a * 40, -H * 0.5, vx + a * 110 - w, 0);
+    ctx.lineTo(vx + a * 110 + w, 0);
+    ctx.quadraticCurveTo(vx + a * 40 + w, -H * 0.5, vx + a * 14 + w / 2, -H);
+    ctx.closePath(); ctx.fill();
+  }
+  haze(r, '#ff5a1f', 70, 40, 0.5);
+  // Хребты.
+  const zf = 220;
+  r.face(zf);
+  const [fa, fb] = r.xRange(zf, 60);
+  ctx.fillStyle = '#2a0e0f';
+  ctx.beginPath();
+  ctx.moveTo(fa, 0);
+  for (const g of L.ridges) { if (g.x + g.w < fa || g.x > fb) continue; ctx.lineTo(g.x, 0); ctx.lineTo(g.x + g.w * 0.45, -g.h); ctx.lineTo(g.x + g.w * 0.55, -g.h * 0.92); ctx.lineTo(g.x + g.w, 0); }
+  ctx.lineTo(fb, 0); ctx.closePath(); ctx.fill();
+  groundBand(r, 60, 260, '#2b1214');
+  groundBand(r, 20, 60, '#2f1416');
+  groundBand(r, NEAR_Z, 20, '#26100f');
+  // Трещины с лавой.
+  r.screen();
+  for (const v of L.vents) {
+    const [px, py] = r.P(v.x, 0, v.z);
+    if (px < -200 || px > r.W + 200) continue;
+    const k = r.k(v.z);
+    const a = 0.55 + Math.sin(t * 3 + v.ph) * 0.25;
+    ctx.fillStyle = `rgba(255,${Math.round(110 + a * 60)},30,${a})`;
+    ctx.beginPath(); ctx.ellipse(px, py, 2.2 * k, 0.16 * k, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,200,80,0.35)';
+    ctx.beginPath(); ctx.ellipse(px, py, 1.2 * k, 0.07 * k, 0, 0, TAU); ctx.fill();
+  }
+  // Глыбы.
+  for (const c of L.rocks) {
+    const [px, py] = r.P(c.x, 0, c.z);
+    if (px < -100 || px > r.W + 100) continue;
+    const k = r.k(c.z) * c.s;
+    ctx.fillStyle = '#1a0b0b';
+    ctx.beginPath(); ctx.moveTo(px - 0.6 * k, py); ctx.lineTo(px - 0.3 * k, py - 0.55 * k); ctx.lineTo(px + 0.35 * k, py - 0.45 * k); ctx.lineTo(px + 0.65 * k, py); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,90,30,0.25)';
+    ctx.fillRect(px - 0.6 * k, py - 0.06 * k, 1.25 * k, 0.06 * k);
+  }
+  groundLineX(r, 1.5, 'rgba(255,110,40,0.25)', 1);
+  groundFront(r, '#1c0b0c', '#ff6a2a');
+}
+
+// Пепел и искры в воздухе.
+function volcanoAsh(r, t) {
+  const L = layout('volcano', volcanoLayout);
+  const ctx = r.ctx;
+  r.screen();
+  for (const f of L.ash) {
+    const sp = 14 + f.d * 30;
+    const x = ((f.x * r.W + Math.sin(t * 0.6 + f.ph) * 20 - r.cam.x * r.cam.s * f.d * 0.3) % r.W + r.W) % r.W;
+    const y = ((f.y * r.H + (f.hot ? -t * sp : t * sp) - r.cam.y * r.cam.s * f.d * 0.3) % r.H + r.H) % r.H;
+    ctx.globalAlpha = 0.35 + f.d * 0.45;
+    ctx.fillStyle = f.hot ? '#ffb347' : '#3b3434';
+    ctx.beginPath(); ctx.arc(x, y, (f.hot ? 0.8 : 1.1) + f.d * 1.4, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------------- Киберпанк ----------------
+const NEON = ['#00e5ff', '#ff2bd6', '#ffe14d', '#7c4dff', '#39ff88'];
+function cyberLayout(rnd) {
+  const far = [], near = [], signs = [], cars = [];
+  for (let x = -700; x < 700; x += 10 + rnd() * 14) far.push({ x, w: 8 + rnd() * 14, h: 40 + rnd() * 110 });
+  for (let x = -150; x < 150;) {
+    const w = 9 + rnd() * 9;
+    const h = 7 + rnd() * 12;
+    near.push({ x, w, h, seed: Math.floor(rnd() * 1e6), c: NEON[Math.floor(rnd() * NEON.length)] });
+    if (rnd() < 0.8) signs.push({ x: x + 1 + rnd() * (w - 4), y: -(3 + rnd() * (h - 6)), w: 2 + rnd() * 3, h: 0.8 + rnd() * 1.2, c: NEON[Math.floor(rnd() * NEON.length)], ph: rnd() * TAU });
+    x += w + 3 + rnd() * 6;
+  }
+  for (let i = 0; i < 10; i++) cars.push({ y: -(30 + rnd() * 60), z: 120 + rnd() * 200, v: (rnd() < 0.5 ? -1 : 1) * (15 + rnd() * 25), x0: rnd() * 600, c: NEON[Math.floor(rnd() * NEON.length)] });
+  return { far: per(far, 1400), near: per(near, 300), signs: per(signs, 300), cars };
+}
+
+function drawCyberpunk(r, t) {
+  const ctx = r.ctx;
+  const L = layout('cyber', cyberLayout);
+  sky(r, ['#04030d', '#0d0724', '#22093a', '#3b0c4f']);
+  haze(r, '#b026ff', 80, 30, 0.35);
+  // Дальние башни с огнями.
+  const zf = 260;
+  r.face(zf);
+  const [fa, fb] = r.xRange(zf, 40);
+  for (const b of L.far) {
+    if (b.x + b.w < fa || b.x > fb) continue;
+    ctx.fillStyle = '#0b0820';
+    ctx.fillRect(b.x, -b.h, b.w, b.h);
+    ctx.fillStyle = 'rgba(0,229,255,0.35)';
+    for (let y = -b.h + 4; y < -2; y += 6) for (let x = b.x + 1; x < b.x + b.w - 1; x += 2.5) if (((x * 13 + y * 7) | 0) % 4 === 0) ctx.fillRect(x, y, 1, 1.6);
+    ctx.fillStyle = '#ff2bd6';
+    ctx.fillRect(b.x + b.w / 2 - 0.3, -b.h - 3, 0.6, 3);
+  }
+  // Летающие машины.
+  r.screen();
+  for (const c of L.cars) {
+    const span = 900;
+    const x = r.cam.x + ((((c.x0 + t * c.v - r.cam.x) % span) + span * 1.5) % span) - span / 2;
+    const [px, py] = r.P(x, c.y, c.z);
+    if (px < -40 || px > r.W + 40) continue;
+    const k = r.k(c.z);
+    ctx.fillStyle = c.c;
+    ctx.fillRect(px - 2 * k, py - 0.4 * k, 4 * k, 0.8 * k);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(px + (c.v > 0 ? 1.6 : -2) * k, py - 0.2 * k, 0.4 * k, 0.4 * k);
+  }
+  // Ближние дома с неоновыми вывесками.
+  const zn = 32;
+  r.face(zn);
+  const [na, nb] = r.xRange(zn, 10);
+  for (const b of L.near) {
+    if (b.x + b.w < na || b.x > nb) continue;
+    ctx.fillStyle = '#120d24';
+    ctx.fillRect(b.x, -b.h, b.w, b.h);
+    ctx.fillStyle = b.c;
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(b.x, -b.h, b.w, 0.25);
+    ctx.globalAlpha = 1;
+    const rnd = seeded(b.seed);
+    for (let y = -b.h + 1.5; y < -2.5; y += 2.4) for (let x = b.x + 0.7; x < b.x + b.w - 1; x += 1.8) {
+      const lit = rnd() < 0.22;
+      ctx.fillStyle = lit ? (rnd() < 0.5 ? '#ffd27a' : '#7ff3ff') : '#19152f';
+      ctx.fillRect(x, y, 1, 1.3);
+    }
+  }
+  for (const sgn of L.signs) {
+    if (sgn.x + sgn.w < na || sgn.x > nb) continue;
+    const on = Math.sin(t * 5 + sgn.ph) > -0.85;
+    ctx.fillStyle = '#05040c';
+    ctx.fillRect(sgn.x - 0.1, sgn.y - 0.1, sgn.w + 0.2, sgn.h + 0.2);
+    ctx.globalAlpha = on ? 1 : 0.25;
+    ctx.fillStyle = sgn.c;
+    ctx.fillRect(sgn.x, sgn.y, sgn.w, sgn.h);
+    ctx.fillStyle = '#05040c';
+    ctx.fillRect(sgn.x + 0.2, sgn.y + 0.25, sgn.w - 0.4, sgn.h - 0.5);
+    ctx.fillStyle = sgn.c;
+    for (let x = sgn.x + 0.35; x < sgn.x + sgn.w - 0.4; x += 0.5) ctx.fillRect(x, sgn.y + sgn.h * 0.35, 0.3, sgn.h * 0.3);
+    ctx.globalAlpha = 1;
+  }
+  groundBand(r, 20, 260, '#0b0a18');
+  groundBand(r, NEAR_Z, 20, '#0e0c1d');
+  // Мокрый асфальт: неоновые полосы-отражения.
+  groundLineX(r, 6, 'rgba(255,43,214,0.35)', 2, [3, 3]);
+  groundLineX(r, 2.5, 'rgba(0,229,255,0.35)', 2);
+  groundFront(r, '#08070f', '#00e5ff');
+}
+
+// Свечение вывесок в темноте (поверх ambient).
+function cyberLights(r, t) {
+  const L = layout('cyber', cyberLayout);
+  const ctx = r.ctx;
+  r.face(32);
+  ctx.globalCompositeOperation = 'lighter';
+  for (const sgn of L.signs) {
+    if (Math.sin(t * 5 + sgn.ph) <= -0.85) continue;
+    ctx.fillStyle = rgba(sgn.c, 0.18);
+    ctx.fillRect(sgn.x - 1, sgn.y - 1, sgn.w + 2, sgn.h + 2);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  r.screen();
+}
+
 export const WORLDS = [
   { id: 'city', name: 'Город', desc: 'Улица, дома, фонари', gravity: 9.8, drawBackground: (r, t) => drawCity(r, t, false), dust: '#a8a49c', debris: ['#5d5f63', '#7a7c80'], thumb: ['#3f86d8', '#cfe9ff', '#46494f'], sun: { x: -0.55, y: 1, z: 0.45, k: 0.45 }, grade: '#ffe9c9' },
   { id: 'night', name: 'Ночной город', desc: 'Огни окон и фонарей', gravity: 9.8, drawBackground: (r, t) => drawCity(r, t, true), ambient: '#5a6aa0', drawLights: cityLights, dust: '#77736c', debris: ['#3a3b40', '#55565c'], thumb: ['#060b1a', '#3a3f6e', '#24252a'], sun: { x: -0.25, y: 1, z: 0.3, k: 0.22 }, grade: '#3b4a8a' },
@@ -892,6 +1097,8 @@ export const WORLDS = [
   { id: 'base', name: 'Военная база', desc: 'Ангар, вышка, забор', gravity: 9.8, drawBackground: drawBase, dust: '#a49a78', debris: ['#7b7356', '#5c5440'], thumb: ['#7d8a97', '#d5dad8', '#8d8565'], sun: { x: -0.4, y: 1, z: 0.4, k: 0.3 }, grade: '#c7c9a6' },
   { id: 'roof', name: 'Крыша небоскрёба', desc: 'Город далеко внизу', gravity: 9.8, drawBackground: drawRoof, dust: '#b0aca3', debris: ['#8e8b84', '#6f6c66'], thumb: ['#2f6db8', '#d8ecfb', '#8e8b84'], sun: { x: 0.7, y: 1, z: 0.45, k: 0.45 }, grade: '#ffeccc' },
   { id: 'station', name: 'Космостанция', desc: 'Невесомость, потолок', gravity: 0, ceiling: -13, drawBackground: drawStation, dust: '#c2c8d0', debris: ['#9aa3ad', '#6b7380'], thumb: ['#05070c', '#c8ced6', '#8e959e'], sun: { x: 0.05, y: 1, z: 0.1, k: 0.2 }, grade: '#cfe0ff' },
+  { id: 'volcano', name: 'Вулкан', desc: 'Пепел, лавовые трещины, раскалённый воздух', gravity: 9.8, drawBackground: drawVolcano, drawForeground: volcanoAsh, ambient: '#ffb08a', dust: '#d84315', debris: ['#3e2723', '#bf360c'], thumb: ['#3d080c', '#8a1f11', '#ff9800'], sun: { x: 0.2, y: 1, z: 0.3, k: 0.6 }, grade: '#ff7043' },
+  { id: 'cyberpunk', name: 'Киберпанк', desc: 'Неоновый ночной мегаполис', gravity: 9.8, drawBackground: drawCyberpunk, drawLights: cyberLights, ambient: '#8f7cd6', dust: '#ba68c8', debris: ['#212121', '#4a148c'], thumb: ['#050510', '#3d0c4e', '#00e5ff'], sun: { x: -0.3, y: 1, z: 0.25, k: 0.25 }, grade: '#7c4dff' },
 ];
 
 // Перед отрисовкой запоминаем камеру — от неё зависит, какие копии декораций нужны.
