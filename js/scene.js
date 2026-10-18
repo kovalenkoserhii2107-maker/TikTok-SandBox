@@ -1,6 +1,7 @@
 // Сохранение и загрузка сцены в localStorage (3 слота).
-import { V, pl } from './sim.js';
+import { V } from './sim.js';
 import { findItem } from './catalog.js';
+import { makeLink, addWire } from './links.js';
 
 const KEY = (n) => `kaboom.scene.${n}`;
 const r3 = (v) => Math.round(v * 1000) / 1000;
@@ -29,7 +30,8 @@ export function serialize(game) {
     const s = { cat: e.spawnRef.cat, id: e.spawnRef.id, f: e.spawnRef.f };
     if (e.isRagdoll) {
       s.f = e.facing;
-      s.id = e.typeId;
+      s.id = e.typeId === 'fighter' ? e.spawnRef.id : e.typeId;
+      s.team = e.team;
       s.parts = {};
       for (const p of e.partList) if (!p.gone) s.parts[p.name] = pose(p.body);
       s.severed = e.partList.filter((p) => !p.gone && p.name !== 'chest' && !p.joint).map((p) => p.name);
@@ -45,25 +47,31 @@ export function serialize(game) {
     }
     out.ents.push(s);
   }
+  const LINKS = ['rope', 'weld', 'hinge', 'spring'];
   for (const l of sim.links) {
-    if (l.dead || (l.type !== 'rope' && l.type !== 'weld')) continue;
+    if (l.dead || !LINKS.includes(l.type)) continue;
     const j = l.joint;
     const ba = j.getBodyA(), bb = j.getBodyB();
     const ea = sim.entAt(ba), eb = sim.entAt(bb);
     const ia = ea ? index.get(ea) : -1, ib = eb ? index.get(eb) : -1;
     if (ia === undefined || ib === undefined) continue;
-    const aw = j.getAnchorA(), bw = j.getAnchorB();
-    const la = ba.getLocalPoint(aw), lb = bb.getLocalPoint(bw);
+    const la = l.la || ba.getLocalPoint(j.getAnchorA()), lb = l.lb || bb.getLocalPoint(j.getAnchorB());
     out.links.push({
       type: l.type,
       a: ia < 0 ? null : [ia, bodyKey(ea, ba)], b: ib < 0 ? null : [ib, bodyKey(eb, bb)],
-      la: [r3(la.x), r3(la.y)], lb: [r3(lb.x), r3(lb.y)], len: l.maxLength,
+      la: [r3(la.x), r3(la.y)], lb: [r3(lb.x), r3(lb.y)], len: l.maxLength ?? l.len,
     });
+  }
+  out.wires = [];
+  for (const w of sim.wires) {
+    const ia = index.get(w.a), ib = index.get(w.b);
+    if (ia === undefined || ib === undefined) continue;
+    out.wires.push({ a: [ia, bodyKey(w.a, w.ba)], b: [ib, bodyKey(w.b, w.bb)], la: [r3(w.la.x), r3(w.la.y)], lb: [r3(w.lb.x), r3(w.lb.y)] });
   }
   return out;
 }
 
-export function deserialize(game, data, linkDraw) {
+export function deserialize(game, data) {
   const sim = game.sim;
   game.clearScene();
   if (data.world) game.setWorld(data.world);
@@ -86,6 +94,7 @@ export function deserialize(game, data, linkDraw) {
       for (const name of s.severed || []) if (e.parts[name]) e.sever(e.parts[name]);
       if (s.headGone) e.explodeHead();
       if (s.blood !== undefined) e.blood = s.blood;
+      if (s.team) e.setTeam(s.team);
       if (s.alive === false) { e.alive = false; e.conscious = false; }
     } else {
       (s.b || []).forEach((t, i) => set(e.bodies[i], t));
@@ -103,13 +112,12 @@ export function deserialize(game, data, linkDraw) {
     const ba = l.a ? ents[l.a[0]] && bodyFromKey(ents[l.a[0]], l.a[1]) : sim.ground;
     const bb = l.b ? ents[l.b[0]] && bodyFromKey(ents[l.b[0]], l.b[1]) : sim.ground;
     if (!ba || !bb) continue;
-    if (l.type === 'rope') {
-      const j = sim.world.createJoint(new pl.RopeJoint({ bodyA: ba, bodyB: bb, localAnchorA: V(...l.la), localAnchorB: V(...l.lb), maxLength: l.len, collideConnected: true }));
-      sim.addLink(j, { type: 'rope', maxLength: l.len, breakForce: 90000, draw: linkDraw.rope });
-    } else {
-      const j = sim.world.createJoint(new pl.WeldJoint({}, ba, bb, ba.getWorldPoint(V(...l.la))));
-      sim.addLink(j, { type: 'weld', breakForce: 120000, draw: linkDraw.weld });
-    }
+    makeLink(sim, l.type, ba, { x: l.la[0], y: l.la[1] }, bb, { x: l.lb[0], y: l.lb[1] }, { len: l.len });
+  }
+  for (const w of data.wires || []) {
+    const ea = ents[w.a[0]], eb = ents[w.b[0]];
+    if (!ea || !eb) continue;
+    addWire(sim, ea, bodyFromKey(ea, w.a[1]), { x: w.la[0], y: w.la[1] }, eb, bodyFromKey(eb, w.b[1]), { x: w.lb[0], y: w.lb[1] });
   }
   return ents.filter(Boolean).length;
 }
@@ -126,11 +134,11 @@ export function saveSlot(game, n) {
   }
 }
 
-export function loadSlot(game, n, linkDraw) {
+export function loadSlot(game, n) {
   let data = null;
   try { data = JSON.parse(localStorage.getItem(KEY(n)) || 'null'); } catch (e) { data = null; }
   if (!data) return -1;
-  return deserialize(game, data, linkDraw);
+  return deserialize(game, data);
 }
 
 export function slotInfo(n) {

@@ -240,6 +240,7 @@ export class Explosive extends Entity {
   facingSign() { return this.f; }
 
   onBegin(c, myFix, otherFix) {
+    if (otherFix.isSensor()) return;
     const id = this.expId;
     const ob = otherFix.getBody();
     if (id === 'mine' && this.armed && !this.detonating) {

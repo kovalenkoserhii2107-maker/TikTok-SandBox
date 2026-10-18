@@ -4,6 +4,9 @@ import { Prop } from './entities/props.js';
 import { Firearm, Melee } from './entities/weapons.js';
 import { Explosive } from './entities/explosives.js';
 import { Vehicle } from './entities/vehicles.js';
+import { Button, Timer, Laser, Motor, Piston, Lamp, ShockPlate } from './entities/machines.js';
+import { Pool } from './entities/water.js';
+import { Helicopter, Plane, Turret } from './entities/aircraft.js';
 
 const rd = (type) => (sim, x, y, f) => new Ragdoll(sim, x, y, type, f);
 const pr = (id) => (sim, x, y, f) => new Prop(sim, x, y, id, f);
@@ -21,6 +24,8 @@ export const CATEGORIES = [
       { id: 'robot', name: 'Робот', desc: 'Стальной корпус, искры вместо крови, очень прочный. При гибели взрывается.', make: rd('robot') },
       { id: 'giant', name: 'Гигант', desc: 'В полтора раза выше, в 3 раза тяжелее и крепче.', make: rd('giant') },
       { id: 'skeleton', name: 'Скелет', desc: 'Лёгкий, кости отлетают от любого удара. Живёт, пока цел череп.', make: rd('skeleton') },
+      { id: 'fighterRed', name: 'Боец (красные)', desc: 'Дерётся руками и ногами с синими и зомби. Дай оружие — будет стрелять.', make: (s, x, y, f) => { const r = new Ragdoll(s, x, y, 'fighter', f); r.setTeam('red'); return r; } },
+      { id: 'fighterBlue', name: 'Боец (синие)', desc: 'Дерётся с красными и зомби. Команду можно поменять в меню объекта.', make: (s, x, y, f) => { const r = new Ragdoll(s, x, y, 'fighter', f); r.setTeam('blue'); return r; } },
       { id: 'dummy', name: 'Манекен', desc: 'Краш-тест манекен: бессмертный, без мышц, для экспериментов.', make: rd('dummy') },
     ],
   },
@@ -70,10 +75,25 @@ export const CATEGORIES = [
     ],
   },
   {
+    id: 'machines', name: 'Механизмы', items: [
+      { id: 'button', name: 'Кнопка', desc: 'Даёт сигнал, когда на неё наступают или нажимают. Соедини проводом с чем угодно.', make: (s, x, y) => new Button(s, x, y) },
+      { id: 'timer', name: 'Таймер', desc: 'Нажми — запустится и будет слать сигнал каждые N секунд. Интервал — в меню объекта.', make: (s, x, y) => new Timer(s, x, y) },
+      { id: 'laser', name: 'Лазер-датчик', desc: 'Даёт сигнал, когда кто-то пересекает луч. Для ловушек.', make: (s, x, y, f) => new Laser(s, x, y, f) },
+      { id: 'motor', name: 'Мотор', desc: 'Вращает диск. Приварь к нему что-нибудь. Сигнал — вкл/выкл.', make: (s, x, y) => new Motor(s, x, y, 1, false) },
+      { id: 'saw', name: 'Циркулярная пила', desc: 'Режет всё, что касается диска. Сигнал — вкл/выкл.', make: (s, x, y) => new Motor(s, x, y, 1, true) },
+      { id: 'piston', name: 'Поршень', desc: 'Резко выталкивает платформу вверх — катапульта. Сигнал — вверх/вниз.', make: (s, x, y) => new Piston(s, x, y) },
+      { id: 'lamp', name: 'Лампа', desc: 'Светит. Сигнал — вкл/выкл.', make: (s, x, y) => new Lamp(s, x, y) },
+      { id: 'shock', name: 'Электрошокер', desc: 'Плита под напряжением: бьёт током всех, кто касается. Сигнал — вкл/выкл.', make: (s, x, y) => new ShockPlate(s, x, y) },
+    ],
+  },
+  {
     id: 'vehicles', name: 'Техника', items: [
       { id: 'truck', name: 'Грузовик', desc: 'Нажми, чтобы сесть за руль. Кузов возит людей.', make: veh('truck') },
       { id: 'car', name: 'Легковушка', desc: 'Быстрая. Нажми, чтобы управлять.', make: veh('car') },
       { id: 'tank', name: 'Танк', desc: 'Пушка, пулемёт, гусеницы. Нажми, чтобы управлять.', make: veh('tank') },
+      { id: 'heli', name: 'Вертолёт', desc: 'Пулемёт и ракеты. Винт рубит всё, что попадёт в лопасти.', make: (s, x, y, f) => new Helicopter(s, x, y, f) },
+      { id: 'plane', name: 'Самолёт', desc: 'Разгонись для взлёта — подъёмная сила растёт со скоростью. Сбрасывает бомбы.', make: (s, x, y, f) => new Plane(s, x, y, f) },
+      { id: 'turret', name: 'Турель', desc: 'Пулемётная турель. Сама стреляет по зомби или управляется вручную.', make: (s, x, y, f) => new Turret(s, x, y, f) },
     ],
   },
   {
@@ -93,6 +113,69 @@ export const CATEGORIES = [
     ],
   },
 ];
+
+// Постройки собираются из блоков (каждый блок — отдельный объект, всё рушится).
+const B = { w: 0.6, h: 0.3, gap: 0.004 };
+function wallColumn(out, x, y0, rows, width = 1) {
+  for (let r = 0; r < rows; r++) {
+    const y = y0 - B.h / 2 - r * (B.h + B.gap);
+    if (width === 1) out.push(['wallBlock', x, y]);
+    else {
+      const odd = r % 2 === 1;
+      let cx = x - (width * B.w) / 2;
+      if (odd) { out.push(['halfBlock', cx + 0.15, y]); cx += 0.3; }
+      const n = odd ? width - 1 : width;
+      for (let i = 0; i < n; i++) { out.push(['wallBlock', cx + 0.3, y]); cx += B.w + B.gap; }
+      if (odd) out.push(['halfBlock', cx + 0.15, y]);
+    }
+  }
+  return y0 - rows * (B.h + B.gap);
+}
+
+function buildWall(x) {
+  const out = [];
+  wallColumn(out, x, 0, 10, 3);
+  return out;
+}
+
+function buildHouse(x) {
+  const out = [];
+  const half = 2.1;
+  let top = 0;
+  for (let floor = 0; floor < 2; floor++) {
+    const rows = floor === 0 ? 9 : 8;
+    wallColumn(out, x - half, top, rows);
+    top = wallColumn(out, x + half, top, rows);
+    out.push(['window', x - 1.1, top - 0.6 + rows * (B.h + B.gap) - 0.2]);
+    out.push(['slab', x, top - 0.12 - B.gap]);
+    top -= 0.24 + B.gap * 2;
+  }
+  return out;
+}
+
+function buildTower(x) {
+  const out = [];
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) out.push(['crate', x + (c - 1) * 1.01, -0.5 - r * 1.005]);
+  return out;
+}
+
+CATEGORIES.splice(CATEGORIES.length - 1, 0, {
+  id: 'build', name: 'Постройки', items: [
+    { id: 'brickWall', name: 'Кирпичная стена', desc: 'Стена 1.8 × 3 м из отдельных блоков. Рушится от взрывов и ударов.', build: buildWall },
+    { id: 'house', name: 'Дом', desc: 'Двухэтажный дом из блоков с перекрытиями. Можно заселить людей.', build: buildHouse },
+    { id: 'crateTower', name: 'Башня из ящиков', desc: '12 ящиков пирамидой — снеси её.', build: buildTower },
+    { id: 'pool', name: 'Бассейн', desc: 'Вода 6 м: дерево всплывает, металл тонет, люди барахтаются и могут утонуть.', make: (s, x) => new Pool(s, x, 0, 'pool') },
+    { id: 'tank', name: 'Аквариум', desc: 'Стеклянный бак с водой 3 м. Стекло можно разбить.', make: (s, x) => new Pool(s, x, 0, 'tank') },
+  ],
+});
+CATEGORIES.push({
+  id: 'hidden', hidden: true, items: [
+    { id: 'wallBlock', name: 'Кирпичный блок', make: pr('wallBlock') },
+    { id: 'halfBlock', name: 'Полублок', make: pr('halfBlock') },
+    { id: 'slab', name: 'Перекрытие', make: pr('slab') },
+    { id: 'window', name: 'Окно', make: pr('window') },
+  ],
+});
 
 for (const c of CATEGORIES) for (const it of c.items) it.cat = c.id;
 

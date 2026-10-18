@@ -18,6 +18,7 @@ export const CHAR_TYPES = {
   robot: { id: 'robot', name: 'Робот', hp: 2.6, str: 1.8, blood: 'oil', mat: 'metal', painK: 0, density: 1.7, robot: true, toughDv: 13, noBleedDeath: true, skin: '#a3acb7', shirt: '#7c8794', pants: '#5d6670', shoes: '#3a3f46' },
   giant: { id: 'giant', name: 'Гигант', hp: 3.2, str: 1.3, scale: 1.5, blood: 'blood', mat: 'flesh', painK: 0.35, infectable: true, shirt: '#7a3328', pants: '#3c3f4a', shoes: '#2b1d14', beard: true },
   skeleton: { id: 'skeleton', name: 'Скелет', hp: 0.55, str: 0.85, blood: null, mat: 'bone', painK: 0, density: 0.5, skeleton: true, noBleedDeath: true, skin: '#ece3cc', shirt: '#ece3cc', pants: '#ece3cc', shoes: '#ddd2b6' },
+  fighter: { id: 'fighter', name: 'Боец', hp: 1.15, str: 1.25, blood: 'blood', mat: 'flesh', infectable: true, painK: 0.6, ai: 'fighter' },
   dummy: { id: 'dummy', name: 'Манекен', hp: 1, str: 0, blood: null, mat: 'plastic', painK: 0, immortal: true, noMuscles: true, skin: '#f2c230', shirt: '#f2c230', pants: '#e3ae22', shoes: '#2a2a2a' },
 };
 
@@ -83,6 +84,16 @@ export class Ragdoll extends Entity {
     this.dripAcc = 0;
     this.infected = false;
     this.onFireT = 0;
+    this.shockT = 0;
+    this.oxygen = 100;
+    this.underwater = false;
+    this.swimming = false;
+    this.team = null;
+    this.punchT = 0;
+    this.atkCd = rand(0.2, 0.6);
+    this.attack = null;
+    this.punchHit = false;
+    this.punchAim = 0;
     this.adrenaline = 0;
     this.poison = 0;
     this.frozen = 0;
@@ -155,7 +166,8 @@ export class Ragdoll extends Entity {
     const thin = T.skeleton ? 0.6 : 1;
     const zSide = p.side === 'B' ? 0.1 * k : p.side === 'F' ? -0.1 * k : 0;
     let v;
-    const common = { z: zSide + (d.z || 0), t: (d.t || 0.14) * k, role: d.role, side: p.side, part: p, clip: false };
+    const tex = T.robot ? 'metal' : T.skeleton ? null : T.id === 'dummy' ? 'paint' : { shirt: 'fabric', pants: 'fabric', skin: 'skin', shoes: 'rubber' }[d.role];
+    const common = { z: zSide + (d.z || 0), t: (d.t || 0.14) * k, role: d.role, side: p.side, part: p, clip: false, tex };
     if (d.shape === 'circle') {
       v = visCircle(p.body, d.r * k, { ...common, sphere: true, detail: (ctx) => this.drawHead(ctx, p) });
     } else if (p.name.startsWith('foot')) {
@@ -319,6 +331,14 @@ export class Ragdoll extends Entity {
       g.farmF = -0.5 * f; g.farmB = -0.5 * f;
       this.lean = 0.12 * f * (this.speed > 1.6 ? 1.6 : 1);
     }
+    if (this.swimming) {
+      // Барахтается в воде.
+      g.uarmF = f * (-2.4 + Math.sin(t * 7) * 1.1); g.uarmB = f * (-2.4 + Math.sin(t * 7 + 2) * 1.1);
+      g.farmF = -0.4 * f; g.farmB = -0.4 * f;
+      g.thighF = f * (-0.4 + 0.5 * Math.sin(t * 9)); g.thighB = f * (-0.4 + 0.5 * Math.sin(t * 9 + 3));
+      g.shinF = 0.5 * f; g.shinB = 0.5 * f;
+      return;
+    }
     if (this.poison > 0) {
       g.uarmF = f * (-1 + Math.sin(t * 23) * 1.2); g.uarmB = f * (-1 + Math.cos(t * 19) * 1.2);
       g.farmF = -1.2 * f; g.farmB = -1.2 * f;
@@ -342,6 +362,18 @@ export class Ragdoll extends Entity {
       g.head = 0.3 * f;
       this.lean = 0.1 * f;
     }
+    if (this.mode === 'fight' && !this.holding) {
+      g.uarmF = -f * 1.15; g.farmF = -f * 2.1;
+      g.uarmB = -f * 0.9; g.farmB = -f * 2.2;
+      g.head = 0.1 * f;
+      this.lean = 0.08 * f;
+      if (this.punchT > 0) {
+        const a = wrapAngle(this.punchAim - Math.PI / 2 - chestA);
+        if (this.attack === 'jabF') { g.uarmF = a; g.farmF = 0; }
+        else if (this.attack === 'jabB') { g.uarmB = a; g.farmB = 0; }
+        else if (this.attack === 'kick') { g.thighF = -1.5 * f; g.shinF = 0.05 * f; g.footF = 0; this.lean = -0.15 * f; }
+      }
+    }
     const held = this.holding && this.holding.w;
     if (held) {
       if (held.isMelee) {
@@ -362,6 +394,16 @@ export class Ragdoll extends Entity {
 
   preStep(h) {
     const T = this.type;
+    if (this.shockT > 0) {
+      // Удар током: судорожные сокращения всех мышц (даже у мёртвых).
+      this.relaxed = false;
+      for (const p of this.partList) {
+        if (!p.joint) continue;
+        p.joint.setMotorSpeed(rand(-18, 18));
+        p.joint.setMaxMotorTorque((p.tq || 60) * 1.4 + 20);
+      }
+      return;
+    }
     if (this.frozen > 0) {
       // Заморожен: суставы как камень.
       if (!this.frozenApplied) {
@@ -396,7 +438,10 @@ export class Ragdoll extends Entity {
       if (!j) continue;
       if (p.connected && !p.broken) {
         const isArm = p.name === 'uarmF' || p.name === 'farmF' || p.name === 'uarmB' || p.name === 'farmB';
-        const swing = this.swingT > 0 && (p.name === 'uarmF' || p.name === 'farmF');
+        const swing = (this.swingT > 0 && (p.name === 'uarmF' || p.name === 'farmF')) ||
+          (this.punchT > 0 && ((this.attack === 'jabF' && (p.name === 'uarmF' || p.name === 'farmF')) ||
+            (this.attack === 'jabB' && (p.name === 'uarmB' || p.name === 'farmB')) ||
+            (this.attack === 'kick' && (p.name === 'thighF' || p.name === 'shinF'))));
         const sp = swing ? 32 : 12;
         const err = (g[p.name] || 0) - j.getJointAngle();
         j.setMotorSpeed(clamp(err * sp, -sp, sp));
@@ -424,6 +469,7 @@ export class Ragdoll extends Entity {
       chest.applyForceToCenter(V(F * 0.5, 0), true);
     }
     if (this.getUpT > 0) chest.applyForceToCenter(V(0, -this.M * this.sim.def.gravity * 0.8), true);
+    if (this.swimming && this.underwater) chest.applyForceToCenter(V(0, -this.M * this.sim.def.gravity * 0.35), true);
   }
 
   // ---------- Логика ----------
@@ -438,6 +484,27 @@ export class Ragdoll extends Entity {
     this.getUpT -= dt;
     this.getUpCd -= dt;
     this.onFireT -= dt;
+    this.shockT -= dt;
+    this.punchT -= dt;
+    this.atkCd -= dt;
+    // Вода: дыхание, пузыри, утопление.
+    this.swimming = false;
+    if (this.sim.waters.length && !this.parts.head.gone) {
+      const hp = this.parts.head.body.getPosition();
+      const cp = this.parts.chest.body.getPosition();
+      this.underwater = !!this.sim.waterAt(hp.x, hp.y - 0.06);
+      const inWater = !!this.sim.waterAt(cp.x, cp.y);
+      if (this.underwater && T.blood) {
+        this.oxygen = Math.max(0, this.oxygen - dt * 9);
+        if (Math.random() < dt * (this.oxygen > 0 ? 3 : 10)) this.sim.effects.bubble(hp.x + 0.08 * this.facing, hp.y);
+        if (this.oxygen <= 0 && this.alive) {
+          this.damage(this.parts.chest, dt * 14, 'drown');
+          this.stun = Math.max(this.stun, 0.6);
+        }
+      } else this.oxygen = Math.min(100, this.oxygen + dt * 30);
+      this.swimming = inWater && this.alive && this.conscious && T.blood && !T.zombie && !T.noMuscles;
+    } else this.underwater = false;
+
     if (this.adrenaline > 0) {
       this.adrenaline -= dt;
       this.pain = 0;
@@ -579,9 +646,14 @@ export class Ragdoll extends Entity {
       } else this.walkDir = 0;
       return;
     }
+    const gunHeld = this.holding && !this.holding.w.isMelee ? this.holding.w : null;
+    if ((ai === 'fighter' || this.team) && !(ai === 'soldier' && gunHeld) && !this.type.noMuscles) {
+      this.fight(dt, me, gunHeld);
+      return;
+    }
     if (this.thinkT <= 0) {
       this.thinkT = rand(0.25, 0.45);
-      this.threat = this.findRagdoll((e) => e.alive && e.type.zombie, ai === 'soldier' ? 38 : 9);
+      this.threat = this.findRagdoll((e) => this.isEnemy(e), ai === 'soldier' ? 38 : 9);
       if (this.threat && ai === 'soldier' && !this.lineOfSight(this.threat)) this.threat = null;
     }
     const th = this.threat && this.threat.alive && !this.threat.removed ? this.threat : null;
@@ -619,6 +691,68 @@ export class Ragdoll extends Entity {
     }
     this.mode = 'idle';
     this.walkDir = 0;
+  }
+
+  isEnemy(e) {
+    if (!e || e === this || !e.isRagdoll || !e.alive || e.removed) return false;
+    if (e.type.zombie) return !this.type.zombie;
+    return !!(this.team && e.team && e.team !== this.team);
+  }
+
+  setTeam(team) {
+    this.team = team;
+    if (team) this.col.shirt = team === 'red' ? '#c62828' : '#1e5bd8';
+  }
+
+  // Рукопашный бой (или стрельба, если в руках оружие).
+  fight(dt, me, gun) {
+    if (this.thinkT <= 0) {
+      this.thinkT = rand(0.3, 0.5);
+      this.target = this.findRagdoll((e) => this.isEnemy(e), 40);
+    }
+    const t = this.target && this.isEnemy(this.target) ? this.target : null;
+    if (!t) {
+      this.mode = 'idle';
+      this.walkDir = 0;
+      this.aim = null;
+      if (gun) gun.trigger(false);
+      return;
+    }
+    const tp = t.parts.head.gone ? t.parts.chest.body.getPosition() : t.parts.head.body.getPosition();
+    const dx = t.parts.chest.body.getPosition().x - me.x;
+    this.setFacing(dx > 0 ? 1 : -1);
+    if (gun) {
+      this.mode = 'idle';
+      this.walkDir = 0;
+      const mz = gun.muzzleWorld();
+      const want = Math.atan2(tp.y - mz.y + 0.05, tp.x - mz.x);
+      this.aim = want;
+      const inRange = !gun.def.range || Math.hypot(tp.x - mz.x, tp.y - mz.y) < gun.def.range;
+      gun.trigger(inRange && Math.abs(wrapAngle(gun.dirAngle() - want)) < 0.2 && this.lineOfSight(t));
+      return;
+    }
+    this.aim = null;
+    this.mode = 'fight';
+    const reach = 0.72 * this.k + 0.2 * (t.k - 1);
+    if (Math.abs(dx) > reach) {
+      this.speed = 1.7 * this.k;
+      this.walkDir = this.facing;
+    } else {
+      this.walkDir = 0;
+      if (this.holding && this.holding.w.isMelee) {
+        if (this.atkCd <= 0) { this.swingT = 0.45; this.atkCd = rand(0.6, 1); }
+        return;
+      }
+      if (this.atkCd <= 0) {
+        const r = Math.random();
+        this.attack = r < 0.42 ? 'jabF' : r < 0.8 ? 'jabB' : 'kick';
+        this.punchT = 0.2;
+        this.punchHit = false;
+        this.atkCd = rand(0.3, 0.6) / (this.adrenaline > 0 ? 1.8 : 1);
+        const hand = this.parts[this.attack === 'jabB' ? 'uarmB' : 'uarmF'].body.getPosition();
+        this.punchAim = Math.atan2(tp.y - hand.y, tp.x - hand.x);
+      }
+    }
   }
 
   activate() {
@@ -718,6 +852,7 @@ export class Ragdoll extends Entity {
   }
 
   onBegin(c, myFix, otherFix) {
+    if (otherFix.isSensor()) return;
     const mb = myFix.getBody(), ob = otherFix.getBody();
     const ud = mb.getUserData();
     const wm = c.getWorldManifold(null);
@@ -755,6 +890,28 @@ export class Ragdoll extends Entity {
         }
       }
     }
+    // Удар кулаком или ногой.
+    if (this.punchT > 0 && !this.punchHit && this.alive && pt) {
+      const atk = this.attack;
+      const limb = atk === 'kick' ? ud.part === 'footF' || ud.part === 'shinF' : atk === 'jabF' ? ud.part === 'farmF' : ud.part === 'farmB';
+      const oud = ob.getUserData();
+      const e = oud && oud.ent;
+      if (limb && e && e.isRagdoll && e !== this && this.isEnemy(e)) {
+        this.punchHit = true;
+        const p = e.parts[oud.part];
+        const head = oud.part === 'head';
+        const dmg = (atk === 'kick' ? 17 : 11) * this.type.str * this.k * (head ? 1.7 : 1) * (this.adrenaline > 0 ? 1.6 : 1);
+        const f = this.facing;
+        this.sim.defer(() => {
+          if (!p || e.removed) return;
+          e.damage(p, dmg, 'blunt');
+          if (head && Math.random() < 0.3) e.stun = Math.max(e.stun, rand(1, 2.5));
+          ob.applyLinearImpulse(V(f * 18 * this.k, -6), V(pt.x, pt.y), true);
+          sfx.impact('flesh', 0.9, pt);
+          if (dmg > 12 && e.type.blood) this.sim.effects.bloodSpray(pt.x, pt.y, f, -0.5, 5, 2, e.type.blood);
+        });
+      }
+    }
     // Укус зомби.
     if (!this.type.zombie || !this.alive || !this.conscious || this.biteCd > 0) return;
     if (ud.part !== 'head' && ud.part !== 'farmF' && ud.part !== 'farmB') return;
@@ -770,6 +927,17 @@ export class Ragdoll extends Entity {
       this.sim.effects.bloodSpray(bp.x, bp.y, 0, -1, 8, 2.5, 'blood');
       e.infect();
     });
+  }
+
+  shock(body, dt) {
+    const T = this.type;
+    this.shockT = 0.25;
+    const p = this.partOf(body) || this.parts.chest;
+    this.damage(this.parts.chest, dt * (T.robot ? 30 : 14), 'shock');
+    this.damage(p, dt * 6, 'shock');
+    if (this.alive) this.stun = Math.max(this.stun, 1.2);
+    this.burn = Math.min(0.6, this.burn + dt * 0.02);
+    if (this.frozen > 0) { this.frozen = 0; this.frozenApplied = false; }
   }
 
   onBurn(body, dt) {
@@ -1262,6 +1430,10 @@ export class Ragdoll extends Entity {
       if (T.zombie) {
         ctx.strokeStyle = 'rgba(60,20,20,0.6)'; ctx.lineWidth = r * 0.05;
         ctx.beginPath(); ctx.moveTo(-r * 0.4, -r * 0.6); ctx.lineTo(-r * 0.05, -r * 0.3); ctx.stroke();
+      }
+      if (this.team) {
+        ctx.fillStyle = this.team === 'red' ? '#ff3b30' : '#2f7bff';
+        ctx.fillRect(-r * 1.0, -r * 0.55, r * 2.0, r * 0.22);
       }
       if (T.helmet) {
         ctx.fillStyle = '#4c5a33';

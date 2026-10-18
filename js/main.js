@@ -1,54 +1,22 @@
 // Точка входа: игровой цикл, камера, инструменты, спавн.
 import { Sim, pl, V } from './sim.js';
-import { Renderer } from './render.js';
+import { Renderer, QUALITY, QUALITY_ORDER } from './render.js';
 import { WORLDS, worldById } from './worlds.js';
 import { UI } from './ui.js';
 import { initPWA } from './pwa.js';
 import { initAudio, setTimeRate, setListener, setSoundEnabled, engineStart, engineStop, engineSet, sfx } from './audio.js';
 import { findItem } from './catalog.js';
 import { saveSlot, loadSlot } from './scene.js';
+import { makeLink, addWire } from './links.js';
 import { clamp, wrapAngle, rand, TAU } from './util.js';
 
 const SETTINGS_KEY = 'kaboom.settings.v1';
-
-function drawRope(r, l) {
-  const j = l.joint;
-  const a = j.getAnchorA(), b = j.getAnchorB();
-  const ctx = r.ctx;
-  r.face(-0.25);
-  const d = Math.hypot(b.x - a.x, b.y - a.y);
-  const slack = Math.max(0, l.maxLength - d);
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 + slack * 0.7;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = '#6e5130';
-  ctx.lineWidth = 0.045;
-  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(mx, my, b.x, b.y); ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,225,170,0.4)';
-  ctx.lineWidth = 0.014;
-  ctx.setLineDash([0.05, 0.05]);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = '#4a4f57';
-  for (const p of [a, b]) { ctx.beginPath(); ctx.arc(p.x, p.y, 0.045, 0, TAU); ctx.fill(); }
-  r.screen();
-}
-
-function drawWeld(r, l) {
-  const a = l.joint.getAnchorA();
-  const ctx = r.ctx;
-  r.face(-0.4);
-  ctx.fillStyle = '#ffb02e';
-  ctx.strokeStyle = '#5a3a10';
-  ctx.lineWidth = 0.015;
-  ctx.beginPath(); ctx.arc(a.x, a.y, 0.05, 0, TAU); ctx.fill(); ctx.stroke();
-  r.screen();
-}
 
 class Game {
   constructor() {
     this.canvas = document.getElementById('game');
     this.r = new Renderer(this.canvas);
-    this.settings = { sound: true, blood: true, quality: true, follow: true, world: 'city' };
+    this.settings = { sound: true, blood: true, gfx: 'auto', fps: false, follow: true, world: 'city' };
     try { Object.assign(this.settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* нет хранилища */ }
     this.worldDef = worldById(this.settings.world);
     this.sim = this.makeSim();
@@ -63,6 +31,11 @@ class Game {
     this.pending = null;
     this.mouse = null;
     this.history = [];
+    this.linkMode = 'rope';
+    // Стартовый уровень для «Авто» — по мощности устройства.
+    const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3;
+    this.autoLevel = weak ? 'medium' : 'high';
+    this.perf = { acc: 0, n: 0, t: 0, good: 0, fps: 60 };
     setSoundEnabled(this.settings.sound);
     this.applyQuality();
     window.addEventListener('resize', () => this.resize());
@@ -92,10 +65,37 @@ class Game {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch (e) { /* нет хранилища */ }
   }
 
+  get gfxLevel() { return this.settings.gfx === 'auto' ? this.autoLevel : this.settings.gfx; }
+
   applyQuality() {
-    this.r.maxDpr = this.settings.quality ? 2 : 1.25;
-    if (this.sim) this.sim.effects.quality = this.settings.quality ? 1 : 0.5;
+    this.r.setQuality(this.gfxLevel);
+    if (this.sim) this.sim.effects.quality = this.r.q.particles;
     this.resize();
+  }
+
+  // Замер FPS и автоподстройка качества.
+  trackPerf(dt) {
+    const p = this.perf;
+    p.acc += dt; p.n++; p.t += dt;
+    if (p.t < 2.5) return;
+    const avg = p.acc / p.n;
+    p.fps = Math.round(1 / Math.max(avg, 0.001));
+    p.acc = 0; p.n = 0; p.t = 0;
+    if (this.settings.fps) this.ui.showFps(p.fps, this.r.q.name);
+    if (this.settings.gfx !== 'auto' || document.hidden) return;
+    const i = QUALITY_ORDER.indexOf(this.autoLevel);
+    if (avg > 1 / 38 && i > 0) {
+      this.autoLevel = QUALITY_ORDER[i - 1];
+      p.good = 0;
+      this.applyQuality();
+      this.ui.toast(`Графика: ${QUALITY[this.autoLevel].name} (авто)`);
+    } else if (avg < 1 / 57) {
+      if (++p.good >= 4 && i < 2) {
+        p.good = 0;
+        this.autoLevel = QUALITY_ORDER[i + 1];
+        this.applyQuality();
+      }
+    } else p.good = 0;
   }
 
   resize() {
@@ -121,6 +121,7 @@ class Game {
     this.worldDef = worldById(id);
     this.sim.def = this.worldDef;
     this.sim.world.setGravity(V(0, this.worldDef.gravity));
+    this.sim.setCeiling(this.worldDef.ceiling);
     for (let b = this.sim.world.getBodyList(); b; b = b.getNext()) b.setAwake(true);
     this.settings.world = id;
     this.saveSettings();
@@ -169,7 +170,7 @@ class Game {
     const e = item.make(sim, x, Math.min(y, -0.05), f);
     e.spawnRef = { cat: item.cat, id: item.id, f };
     sim.add(e);
-    if (!o.noLift) {
+    if (!o.noLift && !e.permanentStatic) {
       const a = e.aabb();
       if (a.uy > -0.005) e.translate(0, -a.uy - 0.01);
     }
@@ -183,6 +184,13 @@ class Game {
   undo() {
     while (this.history.length) {
       const e = this.history.pop();
+      if (Array.isArray(e)) {
+        const alive = e.filter((x) => !x.removed);
+        if (!alive.length) continue;
+        for (const x of alive) this.sim.remove(x);
+        this.ui.toast(`Отменено: ${e.name}`);
+        return true;
+      }
       if (e.removed) continue;
       if (this.controlled === e) this.control(null);
       if (this.drag && this.drag.ent === e) this.endDrag();
@@ -200,14 +208,26 @@ class Game {
   }
 
   loadScene(n) {
-    const c = loadSlot(this, n, { rope: drawRope, weld: drawWeld });
+    const c = loadSlot(this, n);
     if (c < 0) this.ui.toast('Слот пуст');
     else this.ui.toast(`Загружено объектов: ${c}`);
     this.ui.markWorld();
   }
 
+  // Постройка из многих блоков: ставится на землю, отменяется целиком.
+  build(item, x) {
+    const parts = item.build(x);
+    const ents = parts.map(([id, px, py]) => this.place(findItem(id === 'crate' ? 'props' : 'hidden', id), px, py, 1, { noLift: true, noHistory: true }));
+    ents.name = item.name;
+    this.history.push(ents);
+    this.sim.effects.dust(x, -0.2, 8, 'rgba(255,255,255,0.6)', 0.4);
+    sfx.ui();
+    return ents;
+  }
+
   spawn(item, x, y) {
     const sim = this.sim;
+    if (item.build) return this.build(item, x);
     const e = this.place(item, x, y, this.placeFlip);
     sim.effects.dust(x, Math.min(y, -0.1), 3, 'rgba(255,255,255,0.6)', 0.2);
     sfx.ui();
@@ -253,8 +273,7 @@ class Game {
           this.ui.toast(`${ent.name}: здоров`);
         }
         break;
-      case 'rope':
-      case 'weld':
+      case 'link':
         this.connect(w, body);
         break;
     }
@@ -262,29 +281,27 @@ class Game {
 
   connect(w, body) {
     const sim = this.sim;
-    if (this.tool === 'weld' && !body) { this.ui.toast('Нажми на объект'); return; }
+    const mode = this.linkMode;
+    const needBody = mode === 'weld' || mode === 'wire';
+    if (needBody && !body) { this.ui.toast('Нажми на объект'); return; }
     const target = body || sim.ground;
     if (!this.pending) {
       this.pending = { body: target, local: target.getLocalPoint(V(w.x, w.y)) };
-      this.ui.toast('Теперь вторая точка');
+      this.ui.toast(mode === 'wire' ? 'Теперь приёмник сигнала' : 'Теперь вторая точка');
       return;
     }
     const a = this.pending;
     this.pending = null;
     if (a.body === target) return;
-    const pa = a.body.getWorldPoint(a.local), pb = V(w.x, w.y);
-    if (this.tool === 'rope') {
-      const len = Math.max(0.15, Math.hypot(pa.x - pb.x, pa.y - pb.y));
-      const j = sim.world.createJoint(new pl.RopeJoint({
-        bodyA: a.body, bodyB: target, localAnchorA: a.local, localAnchorB: target.getLocalPoint(pb), maxLength: len, collideConnected: true,
-      }));
-      sim.addLink(j, { type: 'rope', maxLength: len, breakForce: 90000, draw: drawRope });
+    const lb = target.getLocalPoint(V(w.x, w.y));
+    if (mode === 'wire') {
+      const ea = sim.entAt(a.body), eb = sim.entAt(target);
+      if (!ea || !eb || ea === eb) return;
+      addWire(sim, ea, a.body, a.local, eb, target, lb);
+      if (!ea.isSource && !eb.isSource) this.ui.toast('Подсказка: на одном конце должен быть источник — кнопка, таймер или лазер', 3000);
     } else {
-      const j = sim.world.createJoint(new pl.WeldJoint({}, a.body, target, V((pa.x + pb.x) / 2, (pa.y + pb.y) / 2)));
-      sim.addLink(j, { type: 'weld', breakForce: 120000, draw: drawWeld });
+      makeLink(sim, mode, a.body, a.local, target, lb);
     }
-    a.body.setAwake(true);
-    target.setAwake(true);
     sfx.click(w);
   }
 
@@ -347,11 +364,18 @@ class Game {
       engineStop();
     }
     this.controlled = v;
+    this.sim.controlledEnt = v;
     this.ui.showDrive(v);
     if (v) {
       initAudio();
-      engineStart(v.kind);
-      this.ui.toast(v.kind === 'tank' ? 'Езда ◀ ▶, ствол ▲ ▼, огонь — «Пушка»' : 'Езда — кнопки ◀ ▶', 2400);
+      engineStart(v.kind === 'heli' || v.kind === 'plane' ? 'car' : v.kind);
+      const hints = {
+        tank: 'Езда ◀ ▶, ствол ▲ ▼, огонь — «Пушка»',
+        heli: '▲ — вверх, ▼ — вниз, ◀ ▶ — наклон и полёт. Не задень винтом!',
+        plane: '▶ — газ (разгонись), ▲ ▼ — рули высоты, «Бомба» — сброс',
+        turret: '▲ ▼ — наводка, «Огонь» — стрелять. Без управления сама бьёт по зомби',
+      };
+      this.ui.toast(hints[v.kind] || 'Езда — кнопки ◀ ▶', 2600);
     }
   }
 
@@ -398,6 +422,12 @@ class Game {
         for (const p of e.partList) p.hp = Math.min(p.hp, 0);
         break;
       case 'drop': e.drop(); break;
+      case 'team': {
+        const next = { null: 'red', red: 'blue', blue: null }[String(e.team)];
+        e.setTeam(next);
+        this.ui.toast(next ? `Команда: ${next === 'red' ? 'красные' : 'синие'}` : 'Без команды');
+        break;
+      }
       case 'clone': {
         if (!e.spawnRef) break;
         const a = e.aabb();
@@ -408,6 +438,9 @@ class Game {
         void c;
         break;
       }
+      case 'unwire':
+        sim.wires = sim.wires.filter((w) => w.a !== e && w.b !== e);
+        break;
       case 'delete':
         if (this.controlled === e) this.control(null);
         sim.remove(e);
@@ -418,8 +451,10 @@ class Game {
 
   // ---------- Цикл ----------
   frame(ts) {
-    const dt = Math.min(0.05, Math.max(0, (ts - this.last) / 1000));
+    const rawDt = Math.max(0, (ts - this.last) / 1000);
+    const dt = Math.min(0.05, rawDt);
     this.last = ts;
+    if (rawDt < 0.5) this.trackPerf(rawDt);
     const sim = this.sim;
     const r = this.r;
     if (this.drag && this.drag.rot != null && !this.drag.body.isStatic()) {

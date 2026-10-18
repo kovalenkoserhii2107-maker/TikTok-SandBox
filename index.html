@@ -39,6 +39,7 @@
     </div>
 
     <div id="tools" class="tools"></div>
+    <div id="linkModes" class="linkmodes hidden"></div>
 
     <button id="btnDetonate" class="det hidden">Детонатор</button>
     <button id="btnSpawn" class="fab"></button>
@@ -52,19 +53,20 @@
 
     <div id="drive" class="drive hidden">
       <div class="dleft">
-        <button id="dLeft" class="dbtn" aria-label="Назад"></button>
-        <button id="dRight" class="dbtn" aria-label="Вперёд"></button>
+        <button id="dLeft" class="dbtn" data-kinds="truck car tank heli plane" aria-label="Влево"></button>
+        <button id="dRight" class="dbtn" data-kinds="truck car tank heli plane" aria-label="Вправо"></button>
       </div>
       <div class="dname"><b id="driveName"></b><button id="dExit" class="ic sm" aria-label="Выйти"></button></div>
       <div class="dright">
-        <button id="dUp" class="dbtn sm tankonly" aria-label="Ствол вверх"></button>
-        <button id="dDown" class="dbtn sm tankonly" aria-label="Ствол вниз"></button>
-        <button id="dMg" class="dbtn act tankonly"></button>
-        <button id="dFire" class="dbtn act red tankonly"></button>
+        <button id="dUp" class="dbtn sm" data-kinds="tank heli plane turret" aria-label="Вверх"></button>
+        <button id="dDown" class="dbtn sm" data-kinds="tank heli plane turret" aria-label="Вниз"></button>
+        <button id="dMg" class="dbtn act" data-kinds="tank heli plane"></button>
+        <button id="dFire" class="dbtn act red" data-kinds="tank heli plane turret"></button>
       </div>
     </div>
 
     <div id="toast"></div>
+    <div id="fps" class="fps hidden"></div>
     <div id="ctx" class="ctxmenu hidden"></div>
   </div>
 
@@ -88,7 +90,13 @@
       <h3>Настройки</h3>
       <label class="opt"><span>Звук</span><input type="checkbox" id="optSound"><i></i></label>
       <label class="opt"><span>Кровь</span><input type="checkbox" id="optBlood"><i></i></label>
-      <label class="opt"><span>Высокое качество</span><input type="checkbox" id="optQuality"><i></i></label>
+      <div class="opt col"><span>Графика</span>
+        <div class="seg" id="optGfx">
+          <button data-q="auto">Авто</button><button data-q="low">Низкая</button><button data-q="medium">Средняя</button><button data-q="high">Высокая</button><button data-q="ultra">Ультра</button>
+        </div>
+        <small id="gfxHint" class="hint"></small>
+      </div>
+      <label class="opt"><span>Показывать FPS</span><input type="checkbox" id="optFps"><i></i></label>
       <label class="opt"><span>Камера следует за техникой</span><input type="checkbox" id="optFollow"><i></i></label>
       <div class="mbtns">
         <button id="btnInstall" class="wide accent">Установить на телефон</button>

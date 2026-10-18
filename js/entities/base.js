@@ -33,7 +33,7 @@ export function visCapsule(body, hw, hh, o = {}) {
   return {
     body, outline: capsuleOutline(hw, hh), rad: hh + hw,
     path: (ctx) => roundRectPath(ctx, -hw, -hh, hw, hh, hw),
-    z: 0, t: 0.15, color: '#888888', ...o,
+    z: 0, t: 0.15, color: '#888888', cyl: hw, ...o,
   };
 }
 
@@ -135,6 +135,9 @@ export class Entity {
   preStep() {}
   update() {}
   activate() { return false; }
+
+  // Сигнал по проводу (от кнопки, таймера, лазера).
+  onSignal() { this.activate(this.main); }
 
   onBullet(body, fix, point, dir, dmg, normal) {
     const mat = (fix.getUserData() || {}).mat;
