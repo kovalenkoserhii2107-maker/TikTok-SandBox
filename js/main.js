@@ -5,7 +5,7 @@ import { WORLDS, worldById } from './worlds.js';
 import { UI } from './ui.js';
 import { initPWA } from './pwa.js';
 import { initAudio, setTimeRate, setListener, setSoundEnabled, engineStart, engineStop, engineSet, sfx } from './audio.js';
-import { findItem } from './catalog.js';
+import { findItem, findPart } from './catalog.js';
 import { saveSlot, loadSlot } from './scene.js';
 import { makeLink, addWire } from './links.js';
 import { clamp, wrapAngle, rand, TAU } from './util.js';
@@ -235,7 +235,7 @@ class Game {
   // Постройка из многих блоков: ставится на землю, отменяется целиком.
   build(item, x) {
     const parts = item.build(x);
-    const ents = parts.map(([id, px, py]) => this.place(findItem('hidden', id) || findItem('props', id), px, py, 1, { noLift: true, noHistory: true }));
+    const ents = parts.map(([id, px, py]) => this.place(findPart(id), px, py, 1, { noLift: true, noHistory: true }));
     if (item.links) item.links(ents, this.sim);
     ents.name = item.name;
     this.history.push(ents);

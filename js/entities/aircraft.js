@@ -52,6 +52,8 @@ class Craft extends Entity {
   }
   onBlast(body, dmg) { this.burn = Math.min(1, this.burn + dmg / 600); this.damage(dmg * 4, 'blast'); }
   onImpulse(myFix, otherFix, imp) {
+    // Замороженное (статичное) тело имеет массу 0 — от ударов оно не страдает.
+    if (!this.chassis.isDynamic()) return;
     const dv = imp / this.chassis.getMass();
     if (dv > 9) this.damage((dv - 9) * 80, 'crash');
   }

@@ -71,6 +71,8 @@ export class FleshChunk extends Entity {
 
   onImpulse(myFix, otherFix, imp) {
     if (!this.style.blood) return;
+    // Замороженное (статичное) тело имеет массу 0 — от ударов оно не страдает.
+    if (!this.main.isDynamic()) return;
     const dv = imp / this.main.getMass();
     if (dv > 4 && Math.random() < 0.5) {
       const p = this.main.getPosition();

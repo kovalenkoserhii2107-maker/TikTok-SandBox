@@ -911,8 +911,16 @@ export class Ragdoll extends Entity {
   onImpulse(myFix, otherFix, imp) {
     const p = this.partOf(myFix.getBody());
     if (!p) return;
+    if (!myFix.getBody().isDynamic()) return;
     const dv = imp / myFix.getBody().getMass();
     if (dv > 60) this.damage(p, (dv - 60) * 0.3, 'blunt');
+    // Давление тяжёлого предмета (пресс, машина на человеке): сила больше ~150 кг веса.
+    const ob = otherFix.getBody();
+    const oud = ob.getUserData();
+    if (ob.isDynamic() && !(oud && oud.ent === this)) {
+      const F = imp * 120;
+      if (F > 1500) this.damage(p, ((F - 1500) / 1500) * 0.45, 'blunt');
+    }
   }
 
   onBegin(c, myFix, otherFix) {
@@ -936,14 +944,16 @@ export class Ragdoll extends Entity {
         }
       }
       const thr = this.type.toughDv || 8;
-      if (vn > thr) {
+      if (vn > Math.min(thr, 4)) {
         const mo = ob.isDynamic() ? ob.getMass() : Infinity;
         const mp = mb.getMass();
         const k = isFinite(mo) ? mo / (mo + mp * 2) : 1;
         const eff = vn * k;
         const p = this.parts[ud.part];
-        if (eff > thr && p) {
-          const amount = (eff - thr) * 6;
+        // Тяжёлый предмет бьёт и на небольшой скорости: учитываем энергию удара.
+        const heavy = isFinite(mo) && mo > 50 && vn > 4 ? (0.5 * Math.min(mo, 400) * vn * vn) / 120 : 0;
+        if ((eff > thr || heavy > 15) && p) {
+          const amount = Math.max(eff > thr ? (eff - thr) * 6 : 0, heavy);
           this.sim.defer(() => {
             this.damage(p, amount, 'blunt');
             if (amount > 25 && this.type.blood) {

@@ -391,6 +391,8 @@ export class Vehicle extends Entity {
   }
 
   onImpulse(myFix, otherFix, imp) {
+    // Замороженное (статичное) тело имеет массу 0 — от ударов оно не страдает.
+    if (!this.chassis.isDynamic()) return;
     const dv = imp / this.chassis.getMass();
     if (dv > 10) this.damage((dv - 10) * 60, 'crash');
   }
