@@ -36,6 +36,7 @@ export function serialize(game) {
       for (const p of e.partList) if (!p.gone) s.parts[p.name] = pose(p.body);
       s.severed = e.partList.filter((p) => !p.gone && p.name !== 'chest' && !p.joint).map((p) => p.name);
       s.headGone = e.parts.head.gone;
+      s.gibbed = e.partList.filter((p) => p.gone && p.name !== 'head').map((p) => p.name);
       s.alive = e.alive;
       s.blood = Math.round(e.blood);
       if (e.holding && index.has(e.holding.w)) s.hold = index.get(e.holding.w);
@@ -92,7 +93,8 @@ export function deserialize(game, data) {
     if (e.isRagdoll) {
       for (const [name, t] of Object.entries(s.parts || {})) set(e.parts[name] && e.parts[name].body, t);
       for (const name of s.severed || []) if (e.parts[name]) e.sever(e.parts[name]);
-      if (s.headGone) e.explodeHead();
+      for (const name of s.gibbed || []) if (e.parts[name]) e.gibPart(e.parts[name], null, 0, true);
+      if (s.headGone) e.explodeHead(null, true);
       if (s.blood !== undefined) e.blood = s.blood;
       if (s.team) e.setTeam(s.team);
       if (s.alive === false) { e.alive = false; e.conscious = false; }

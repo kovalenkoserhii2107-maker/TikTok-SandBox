@@ -18,6 +18,8 @@
 <body>
   <canvas id="game"></canvas>
 
+  <div id="frame916" class="frame916 hidden"><div class="fbox"><span class="flabel">9:16 · TikTok</span><i class="safe r"></i><i class="safe b"></i></div></div>
+
   <div id="hud">
     <div class="topbar">
       <button id="btnMenu" class="ic" aria-label="Меню"></button>
@@ -65,6 +67,23 @@
       </div>
     </div>
 
+    <div id="camtools" class="camtools">
+      <button id="btnRec" class="cam rec" aria-label="Запись видео"><i></i><span>REC</span></button>
+      <button id="btnReplay" class="cam" aria-label="Повтор последних 10 секунд"></button>
+      <button id="btnCine" class="cam" aria-label="Кинокамера"></button>
+      <button id="btnVert" class="cam" aria-label="Вертикальный кадр 9:16"></button>
+    </div>
+    <div id="recBadge" class="recbadge"><i></i><b>REC</b><span id="recTime">0:00</span></div>
+
+    <div id="replayBar" class="replaybar">
+      <button id="rpPlay" class="ic sm" aria-label="Пауза"></button>
+      <div id="rpTrack" class="rptrack"><i id="rpFill"></i></div>
+      <button id="rpSpeed" class="chip" aria-label="Скорость повтора">Авто</button>
+      <button id="rpAngle" class="chip" aria-label="Ракурс">Ракурс</button>
+      <button id="rpRec" class="chip rec">● Записать</button>
+      <button id="rpClose" class="ic sm" aria-label="Закрыть повтор"></button>
+    </div>
+
     <div id="toast"></div>
     <div id="fps" class="fps hidden"></div>
     <div id="ctx" class="ctxmenu hidden"></div>
@@ -107,6 +126,17 @@
     </div>
   </div>
 
+  <div id="vid" class="modal hidden">
+    <div class="card vidcard">
+      <h2>Видео готово</h2>
+      <video id="vidPlayer" playsinline loop muted autoplay controls></video>
+      <p id="vidInfo" class="vinfo"></p>
+      <button id="vidShare" class="wide accent">Поделиться: TikTok, Telegram, Instagram</button>
+      <button id="vidSave" class="wide">Сохранить видео</button>
+      <button id="vidClose" class="wide">Закрыть</button>
+    </div>
+  </div>
+
   <div id="help" class="modal hidden">
     <div class="card">
       <h2>Как играть</h2>
@@ -118,6 +148,8 @@
         <li><b>Меню объекта</b> — подержи палец на объекте (на ПК — правая кнопка): поджечь, заморозить, копировать, вылечить, удалить.</li>
         <li><b>Шприцы</b> — перетащи шприц иглой на персонажа или брось в него.</li>
         <li><b>Камера</b> — тяни пустое место, щипок — масштаб.</li>
+        <li><b>REC</b> — запись видео со звуком прямо из игры. <b>Повтор</b> — последние 10 секунд в замедлении 0.1× с другого ракурса, оттуда тоже можно записать ролик.</li>
+        <li><b>Кино</b> — камера сама наезжает на взрывы и следит за летящими телами. <b>9:16</b> — вертикальная рамка под TikTok.</li>
         <li><b>Замедление</b> — кнопка с часами, ▾ — выбор скорости.</li>
         <li><b>Заморозить, Верёвка, Сварка, Лечить, Удалить</b> — инструменты слева.</li>
         <li><b>ПК</b>: пробел — пауза, T — замедление, стрелки — техника, F — огонь.</li>

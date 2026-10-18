@@ -482,6 +482,7 @@ export class UI {
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
     cv.addEventListener('pointerdown', (e) => {
       initAudio();
+      if (g.media && g.media.replay.active) { g.media.togglePlay(); return; }
       this.closeCtx();
       clearTimeout(this.lpTimer);
       cv.setPointerCapture(e.pointerId);
@@ -587,6 +588,7 @@ export class UI {
     cv.addEventListener('pointercancel', end);
     cv.addEventListener('wheel', (e) => {
       e.preventDefault();
+      if (g.media && g.media.replay.active) return;
       if (g.drag && e.shiftKey) { g.drag.rot = (g.drag.rot ?? g.drag.body.getAngle()) + Math.sign(e.deltaY) * 0.15; return; }
       g.zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015));
     }, { passive: false });
@@ -599,7 +601,18 @@ export class UI {
       if (e.target.tagName === 'INPUT') return;
       keys.add(e.code);
       const c = g.controlled && g.controlled.ctrl;
+      const M = g.media;
+      if (M && M.replay.active) {
+        if (e.code === 'Space') { e.preventDefault(); M.togglePlay(); }
+        if (e.code === 'Escape' || e.code === 'KeyP') M.closeReplay();
+        if (e.code === 'KeyR') M.recordReplay();
+        return;
+      }
       switch (e.code) {
+        case 'KeyR': if (!e.ctrlKey && !e.metaKey) M.toggleRec(); break;
+        case 'KeyP': if (!e.ctrlKey && !e.metaKey) M.openReplay(); break;
+        case 'KeyC': if (!e.ctrlKey && !e.metaKey) M.toggleCinema(); break;
+        case 'KeyV': if (!e.ctrlKey && !e.metaKey) M.toggleVertical(); break;
         case 'Space': e.preventDefault(); if (c) c.fire = true; else { g.paused = !g.paused; this.updatePause(); } break;
         case 'KeyT': g.setSlow(g.timeScale === 1 ? g.slowValue : 1); this.updateSlow(); break;
         case 'ArrowLeft': case 'KeyA': if (c) c.x = -1; break;

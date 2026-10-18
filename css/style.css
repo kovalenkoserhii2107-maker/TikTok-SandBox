@@ -525,3 +525,139 @@ body:has(.drive:not(.hidden)) .placebar { display: none; }
   .world i { height: 40px; }
   .play { margin-top: 12px; padding: 12px 48px; font-size: 18px; }
 }
+
+/* ---------- Видео: REC, Повтор, Кино, 9:16 ---------- */
+.camtools {
+  position: absolute;
+  right: calc(10px + var(--sar));
+  top: calc(64px + var(--sat));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 5px;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.cam {
+  width: 52px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: #d5dce6;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.cam svg { width: 21px; height: 21px; }
+.cam:active { transform: scale(0.93); }
+.cam.on { background: rgba(255, 122, 26, 0.2); color: var(--accent2); }
+.cam.rec i { width: 18px; height: 18px; border-radius: 50%; background: #ff3b30; box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.25); transition: border-radius 0.15s, transform 0.15s; }
+.cam.rec span { color: #ff6b61; }
+body.recording .cam.rec { background: rgba(255, 59, 48, 0.2); }
+body.recording .cam.rec i { border-radius: 4px; transform: scale(0.8); animation: recpulse 1s infinite; }
+@keyframes recpulse { 50% { box-shadow: 0 0 0 7px rgba(255, 59, 48, 0); } }
+
+.recbadge {
+  position: absolute;
+  top: calc(16px + var(--sat));
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(10, 12, 16, 0.8);
+  border: 1px solid rgba(255, 59, 48, 0.5);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none !important;
+}
+.recbadge i { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; animation: blink 1s steps(2) infinite; }
+.recbadge b { color: #ff6b61; font-size: 12px; }
+@keyframes blink { 50% { opacity: 0.2; } }
+body.recording .recbadge { display: flex; }
+
+.frame916 { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.frame916 .fbox {
+  position: absolute;
+  box-shadow: 0 0 0 100vmax rgba(5, 7, 10, 0.55);
+  outline: 2px dashed rgba(255, 255, 255, 0.35);
+  outline-offset: -2px;
+}
+.frame916 .flabel {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+/* Зоны, которые в TikTok закрывают кнопки и подпись. */
+.frame916 .safe { position: absolute; border: 1px dashed rgba(255, 255, 255, 0.16); border-radius: 10px; }
+.frame916 .safe.r { right: 2%; top: 38%; width: 15%; height: 42%; }
+.frame916 .safe.b { left: 3%; right: 20%; bottom: 7%; height: 12%; }
+body.recording .frame916 .fbox { outline-color: rgba(255, 59, 48, 0.7); }
+
+.replaybar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(12px + var(--sab));
+  transform: translateX(-50%);
+  width: min(720px, calc(100vw - 24px));
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border-radius: 18px;
+  background: rgba(14, 17, 22, 0.86);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+}
+body.replaying .replaybar { display: flex; }
+.rptrack { flex: 1; min-width: 60px; height: 30px; display: flex; align-items: center; cursor: pointer; touch-action: none; position: relative; }
+.rptrack::before { content: ''; position: absolute; left: 0; right: 0; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.14); }
+.rptrack i { position: relative; display: block; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #ff3b30, var(--accent2)); width: 0; }
+.chip { height: 38px; padding: 0 12px; border-radius: 11px; background: rgba(255, 255, 255, 0.08); font-weight: 800; font-size: 13px; white-space: nowrap; }
+.chip:active { transform: scale(0.95); }
+.chip.rec { color: #fff; background: linear-gradient(135deg, #ff3b30, #c41a12); }
+.chip.rec.on { background: #fff; color: #d0190f; }
+body.replaying .topbar,
+body.replaying .tools,
+body.replaying .fab,
+body.replaying .placebar,
+body.replaying .drive,
+body.replaying .det,
+body.replaying .linkmodes,
+body.replaying .camtools,
+body.replaying #speedPick { display: none !important; }
+body.replaying.slowmo-on::after { display: none; }
+body.replaying canvas#game { filter: none; }
+
+.vidcard { text-align: center; }
+.vidcard video { width: 100%; max-height: 46dvh; border-radius: 14px; background: #000; display: block; margin: 6px 0 8px; }
+.vinfo { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
+
+@media (orientation: portrait) {
+  .camtools { top: calc(64px + var(--sat)); }
+  .recbadge { left: calc(10px + var(--sal)); top: calc(64px + var(--sat)); transform: none; }
+  .cam { width: 48px; height: 46px; }
+  .replaybar { flex-wrap: wrap; justify-content: center; }
+  .rptrack { flex-basis: 100%; order: -1; }
+}
+@media (max-height: 430px) and (orientation: landscape) {
+  .cam { height: 42px; width: 48px; }
+  .cam span { font-size: 8.5px; }
+  .camtools { gap: 3px; padding: 4px; top: calc(60px + var(--sat)); }
+}

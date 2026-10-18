@@ -4,6 +4,7 @@ import { Entity, visCapsule, visCircle, visRRect, pl, V, CAT } from './base.js';
 import { polyShape, circleShape } from '../sim.js';
 import { clamp, rand, pick, chance, wrapAngle, chamferBox, shade, mix, TAU, roundRectPath, lerp } from '../util.js';
 import { sfx } from '../audio.js';
+import { spawnChunks } from './gore.js';
 
 const SKIN = ['#f1c9a5', '#e0ac69', '#c68642', '#8d5524', '#f6d7c3', '#d9a07a'];
 const HAIR = ['#2b1d12', '#4a2f1b', '#1a1a1a', '#a0622d', '#d9b46a', '#6b4a2e', '#8a8a8a'];
@@ -774,7 +775,7 @@ export class Ragdoll extends Entity {
     if (p.wounds.length > 10) p.wounds.shift();
     const l = p.body.getLocalPoint(V(wp.x, wp.y));
     const a = dir ? Math.atan2(dir.y, dir.x) - p.body.getAngle() : 0;
-    p.wounds.push({ x: l.x, y: l.y, kind, a, r: (kind === 'cut' ? 0.06 : 0.022) * rand(0.8, 1.3) });
+    p.wounds.push({ x: l.x, y: l.y, kind, a, r: (kind === 'cut' ? 0.06 : kind === 'gash' ? 0.045 : 0.022) * rand(0.8, 1.3) });
   }
 
   damage(p, amount, kind, point, dir) {
@@ -794,15 +795,19 @@ export class Ragdoll extends Entity {
     if (T.blood && (kind === 'bullet' || kind === 'cut' || kind === 'stab' || kind === 'bite')) p.bleed += amount * 0.014;
     if (T.blood && kind === 'blast' && amount > 20) p.bleed += amount * 0.004;
     if (kind === 'blunt' && p.name === 'head' && amount > 12) this.stun = Math.max(this.stun, rand(1.5, 4));
+    // Глубокий рез вырывает кусок мяса.
+    if (kind === 'cut' && point && amount > 35 && chance(0.55)) this.tearChunk(p, point, dir, amount / 40);
 
     const limb = p.name !== 'chest' && p.name !== 'belly';
     if (p.hp <= 0) {
+      const heavy = kind === 'bullet' && (amount >= 70 || p.hp < -p.maxHp * 0.8);
       if (p.name === 'head') {
-        if (T.blood && amount >= 55 && (kind === 'bullet' || kind === 'blast')) this.explodeHead();
-        else if (T.skeleton || T.robot) { if (amount > 25) this.explodeHead(); }
+        if (T.blood && amount >= 55 && (kind === 'bullet' || kind === 'blast')) this.explodeHead(dir);
+        else if (T.skeleton || T.robot) { if (amount > 25) this.explodeHead(dir); }
         this.die('head');
       } else if (limb) {
-        if (kind === 'cut' || kind === 'blast' || T.fragile || (kind === 'bullet' && amount > 60)) this.sever(p);
+        if (heavy && !T.immortal) this.gibPart(p, dir, 0.25);
+        else if (kind === 'cut' || kind === 'blast' || T.fragile || (kind === 'bullet' && amount > 60)) this.sever(p);
         else if (!p.broken) {
           p.broken = true;
           sfx.impact('wood', 0.8, p.body.getPosition());
@@ -827,6 +832,9 @@ export class Ragdoll extends Entity {
       fx.impact(T.mat, point.x, point.y, -dir.x, -dir.y, 1);
       if (T.robot) sfx.ricochet(point);
     }
+    // Мощные пули вырывают куски плоти (дробовик, винчестер, снайперка).
+    const g = dmg * ((o && o.gore) || 1);
+    if (!T.immortal && chance(clamp((g - 14) / 70, 0, 0.9))) this.tearChunk(p, point, dir, g / 40);
     this.damage(p, dmg, 'bullet', point, dir);
   }
 
@@ -836,9 +844,20 @@ export class Ragdoll extends Entity {
     const amount = dmg * rand(0.8, 1.2);
     this.burn = Math.min(1, Math.max(this.burn, o && o.nuke ? (fall > 0.15 ? 1 : fall * 4) : fall * P * 0.18));
     this.stun = Math.max(this.stun, fall * 4);
-    if (p.name !== 'chest' && p.name !== 'belly' && amount > p.maxHp * 1.3 && chance(0.4)) {
-      this.sever(p);
-      if (p.name === 'head' && amount > 90 && this.type.blood) this.explodeHead();
+    const dir = { x: nx, y: ny };
+    const limb = p.name !== 'chest' && p.name !== 'belly';
+    if (limb && amount > p.maxHp * 1.3 && !this.type.immortal) {
+      // Близкий взрыв разносит конечность на куски или отрывает её.
+      if (p.name === 'head' && amount > 110 && this.type.blood && chance(0.6)) this.explodeHead(dir);
+      else if (amount > p.maxHp * 2 && chance(0.3)) this.gibPart(p, dir, fall);
+      else if (chance(0.3)) this.sever(p);
+    }
+    if (amount > 30 && !this.type.immortal && !p.gone) {
+      const n = amount > p.maxHp ? 2 : 1;
+      for (let i = 0; i < n; i++) if (chance(0.4)) {
+        const bp = p.body.getWorldPoint(V(rand(-0.05, 0.05), rand(-0.08, 0.08)));
+        this.tearChunk(p, bp, dir, (amount / 30) * Math.max(0.5, fall));
+      }
     }
     this.damage(p, amount, 'blast');
   }
@@ -1071,6 +1090,102 @@ export class Ragdoll extends Entity {
     });
   }
 
+  goreKind() {
+    const T = this.type;
+    return T.robot ? 'metal' : T.skeleton ? 'bone' : T.zombie ? 'zombie' : T.blood ? 'flesh' : null;
+  }
+
+  // Вырвать кусок плоти: рана-кратер, кровотечение и отлетающий кусок.
+  tearChunk(p, point, dir, power = 1) {
+    const kind = this.goreKind();
+    if (!kind || p.gone || !point) return;
+    const T = this.type;
+    const d = dir || { x: 0, y: -1 };
+    const dl = Math.hypot(d.x, d.y) || 1;
+    const pt = { x: point.x, y: point.y };
+    this.sim.defer(() => {
+      if (p.gone || this.removed) return;
+      if (p.wounds.filter((w) => w.kind === 'gash').length < 4) this.addWound(p, pt, T.blood ? 'gash' : T.robot ? 'dent' : 'crack', d);
+      if (T.blood) {
+        p.bleed += 0.8;
+        this.sim.effects.bloodSpray(pt.x, pt.y, d.x / dl, d.y / dl, 9, 4, T.blood);
+        sfx.squish(pt);
+      } else if (T.robot) this.sim.effects.sparks(pt.x, pt.y, 8, 1);
+      const v = p.body.getLinearVelocity();
+      const n = power > 2.5 ? 3 : power > 1.4 ? 2 : 1;
+      this.sim.event('hit', pt.x, pt.y, 1 + n * 0.5);
+      spawnChunks(this.sim, pt.x, pt.y, d.x / dl, d.y / dl, n, kind, {
+        speed: clamp(3 + power * 1.2, 3, 7), size: 0.075 * this.k * clamp(power, 0.8, 1.5), skin: T.blood ? this.col[p.def.role] : null, vx: v.x * 0.3, vy: v.y * 0.3,
+      });
+    });
+    p.hp -= 6;
+  }
+
+  // Часть тела разлетается на куски.
+  gibPart(p, dir, fall = 1, quiet = false) {
+    if (p.gone || p.gibbing || p.name === 'chest') return;
+    p.gibbing = true;
+    if (p.name === 'head') { this.explodeHead(dir, quiet); return; }
+    this.sim.defer(() => {
+      if (p.gone || this.removed) return;
+      const T = this.type;
+      const pos = p.body.getPosition();
+      const vel = p.body.getLinearVelocity();
+      // Дочерние части отваливаются со своими культями.
+      for (const c of this.partList) {
+        if (c.def.parent !== p.name || c.gone || !c.joint) continue;
+        const aw = c.joint.getAnchorB();
+        const lb = c.body.getLocalPoint(aw);
+        this.sim.world.destroyJoint(c.joint);
+        c.joint = null;
+        c.stumps.push({ x: lb.x, y: lb.y, stump: true });
+        if (T.blood) c.bleed += 1.2;
+      }
+      if (p.joint) {
+        const aw = p.joint.getAnchorA();
+        const parent = this.parts[p.def.parent];
+        const la = parent.body.getLocalPoint(aw);
+        this.sim.world.destroyJoint(p.joint);
+        p.joint = null;
+        parent.stumps.push({ x: la.x, y: la.y, stump: true });
+        if (T.blood) parent.bleed += 3;
+      }
+      if (this.holding && (p.name === 'farmF' || p.name === 'uarmF')) this.drop();
+      if (!quiet) {
+        this.sim.event('gore', pos.x, pos.y, 3);
+        const kind = this.goreKind();
+        const d = dir || { x: 0, y: -1 };
+        const dl = Math.hypot(d.x, d.y) || 1;
+        const size = Math.max(p.def.hw || 0.1, 0.06) * this.k;
+        if (kind) spawnChunks(this.sim, pos.x, pos.y, d.x / dl, d.y / dl, Math.round(rand(4, 6) * this.k), kind, {
+          speed: 3.5 + 6 * clamp(fall, 0, 1), size: size * 1.1, skin: T.blood ? this.col[p.def.role] : null, vx: vel.x * 0.4, vy: vel.y * 0.4,
+        });
+        if (T.blood) {
+          this.sim.effects.bloodSpray(pos.x, pos.y, d.x / dl, d.y / dl - 0.5, 30, 6, T.blood);
+          sfx.squish(pos);
+        } else if (T.robot) {
+          this.sim.effects.sparks(pos.x, pos.y, 16, 1.2);
+          sfx.zap(pos);
+        }
+      }
+      this.removePartBody(p);
+      if (p.name === 'belly') this.die('torso');
+    });
+  }
+
+  removePartBody(p) {
+    this.sim.destroyBody(p.body);
+    this.bodies = this.bodies.filter((b) => b !== p.body);
+    this.visuals = this.visuals.filter((v) => v.part !== p);
+    this.shadowBodies = this.shadowBodies.filter((b) => b !== p.body);
+    p.gone = true;
+    p.connected = false;
+    p.bleed = 0;
+    p.gibbing = false;
+    this.refreshConnections();
+    this.M = this.mass();
+  }
+
   refreshConnections() {
     for (const name of ORDER) {
       const p = this.parts[name];
@@ -1080,33 +1195,36 @@ export class Ragdoll extends Entity {
     }
   }
 
-  explodeHead() {
+  explodeHead(dir, quiet = false) {
     const p = this.parts.head;
     if (p.gone) return;
     this.sim.defer(() => {
       if (p.gone || this.removed) return;
       const pos = p.body.getPosition();
+      const vel = p.body.getLinearVelocity();
       const T = this.type;
       if (p.joint) { this.sim.world.destroyJoint(p.joint); p.joint = null; }
       const chest = this.parts.chest;
-      const la = chest.body.getLocalPoint(V(pos.x, pos.y + 0.12 * this.k));
       chest.stumps.push({ x: 0, y: -PARTS.chest.hh * this.k, stump: true, nx: 0, ny: -1 });
-      if (T.blood) {
-        chest.bleed += 4;
-        this.sim.effects.bloodSpray(pos.x, pos.y, 0, -1, 40, 5, T.blood);
-        this.sim.effects.chunks(pos.x, pos.y, 10, T.zombie ? ['#6f8f4f', '#4a2020'] : ['#8a1a1a', '#b03030', '#e8d8c8'], 0.05, 5);
-        sfx.squish(pos);
-      } else {
-        this.sim.effects.chunks(pos.x, pos.y, 12, T.robot ? ['#9aa3ad', '#5d6670', '#36e0ff'] : [this.col.skin, '#cfc4a8'], 0.05, 5);
-        if (T.robot) this.sim.effects.sparks(pos.x, pos.y, 16, 1.2);
+      if (!quiet) {
+        this.sim.event('gore', pos.x, pos.y, 4);
+        const d = dir || { x: 0, y: -1 };
+        const dl = Math.hypot(d.x, d.y) || 1;
+        const kind = this.goreKind();
+        if (kind) spawnChunks(this.sim, pos.x, pos.y, d.x / dl, d.y / dl - 0.3, Math.round(rand(5, 7)), kind, {
+          speed: 5, size: 0.08 * this.k, skin: T.blood ? this.col.skin : null, vx: vel.x * 0.4, vy: vel.y * 0.4,
+        });
+        if (T.blood) {
+          this.sim.effects.bloodSpray(pos.x, pos.y, 0, -1, 40, 5, T.blood);
+          this.sim.effects.chunks(pos.x, pos.y, 8, T.zombie ? ['#6f8f4f', '#4a2020'] : ['#8a1a1a', '#b03030', '#e8d8c8'], 0.04, 5);
+          sfx.squish(pos);
+        } else {
+          this.sim.effects.chunks(pos.x, pos.y, 10, T.robot ? ['#9aa3ad', '#5d6670', '#36e0ff'] : [this.col.skin, '#cfc4a8'], 0.05, 5);
+          if (T.robot) this.sim.effects.sparks(pos.x, pos.y, 16, 1.2);
+        }
       }
-      void la;
-      this.sim.destroyBody(p.body);
-      this.bodies = this.bodies.filter((b) => b !== p.body);
-      this.visuals = this.visuals.filter((v) => v.part !== p);
-      p.gone = true;
-      p.connected = false;
-      this.shadowBodies = this.shadowBodies.filter((b) => b !== p.body);
+      if (T.blood) chest.bleed += 4;
+      this.removePartBody(p);
       this.die('head');
     });
   }
@@ -1130,7 +1248,7 @@ export class Ragdoll extends Entity {
         if (np.joint) this.sim.world.destroyJoint(np.joint);
         this.makeJoint(np);
         this.bodies = this.bodies.filter((b) => b !== p.body);
-        if (name === 'head') this.shadowBodies.push(np.body);
+        if (name === 'head' || name.startsWith('foot')) this.shadowBodies.push(np.body);
         continue;
       }
       p.body.setTransform(wp, parent.body.getAngle());
@@ -1174,6 +1292,20 @@ export class Ragdoll extends Entity {
         ctx.beginPath();
         ctx.ellipse(0, 0, w.r, w.r * 0.18, 0, 0, TAU);
         ctx.fill();
+        ctx.restore();
+      } else if (w.kind === 'gash') {
+        // Вырванный кусок: тёмный кратер, светлый край мяса, кость.
+        ctx.save();
+        ctx.translate(w.x, w.y);
+        ctx.rotate(w.a);
+        ctx.fillStyle = T.zombie ? '#5d7a2c' : '#b8413a';
+        ctx.beginPath(); ctx.ellipse(0, 0, w.r * 1.35, w.r, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = T.zombie ? '#2a3a10' : '#4a0606';
+        ctx.beginPath(); ctx.ellipse(w.r * 0.1, 0, w.r * 0.95, w.r * 0.68, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = 'rgba(255,190,170,0.35)';
+        ctx.beginPath(); ctx.ellipse(-w.r * 0.5, -w.r * 0.35, w.r * 0.4, w.r * 0.18, -0.4, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#efe5cf';
+        ctx.beginPath(); ctx.ellipse(w.r * 0.2, w.r * 0.1, w.r * 0.32, w.r * 0.2, 0.3, 0, TAU); ctx.fill();
         ctx.restore();
       } else if (w.kind === 'dent') {
         ctx.fillStyle = '#2a2e33';

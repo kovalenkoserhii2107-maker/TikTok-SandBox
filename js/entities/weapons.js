@@ -19,7 +19,7 @@ export const GUNS = {
     ],
   },
   revolver: {
-    name: 'Револьвер', mass: 1.3, rate: 0.32, dmg: 48, imp: 12, spread: 0.01, recoil: 4.2, snd: 'revolver', flash: 1.1, pen: 1.2,
+    name: 'Револьвер', mass: 1.3, gore: 1.2, rate: 0.32, dmg: 48, imp: 12, spread: 0.01, recoil: 4.2, snd: 'revolver', flash: 1.1, pen: 1.2,
     grip: [-0.03, 0.01], muzzle: [0.225, -0.068], noCasing: true,
     shapes: [
       { pts: R(0.03, -0.08, 0.22, -0.055), color: STEEL },
@@ -54,7 +54,7 @@ export const GUNS = {
     ],
   },
   shotgun: {
-    name: 'Дробовик', mass: 3.4, rate: 0.85, pellets: 9, dmg: 17, imp: 6.5, spread: 0.085, recoil: 13, snd: 'shotgun', flash: 1.6, shellBig: true,
+    name: 'Дробовик', mass: 3.4, gore: 2.4, rate: 0.85, pellets: 9, dmg: 17, imp: 6.5, spread: 0.085, recoil: 13, snd: 'shotgun', flash: 1.6, shellBig: true,
     grip: [-0.24, -0.02], muzzle: [0.555, -0.069], eject: [-0.12, -0.09],
     shapes: [
       { pts: [[-0.56, -0.05], [-0.25, -0.075], [-0.25, -0.025], [-0.56, 0.05]], color: '#6e3b1b' },
@@ -65,7 +65,7 @@ export const GUNS = {
     ],
   },
   winchester: {
-    name: 'Винчестер', mass: 3.6, rate: 0.7, dmg: 80, imp: 24, spread: 0.004, recoil: 9, snd: 'revolver', flash: 1.3, pen: 1.6,
+    name: 'Винчестер', mass: 3.6, gore: 1.3, rate: 0.7, dmg: 80, imp: 24, spread: 0.004, recoil: 9, snd: 'revolver', flash: 1.3, pen: 1.6,
     grip: [-0.22, -0.01], muzzle: [0.505, -0.071], eject: [-0.15, -0.09], lever: true,
     shapes: [
       { pts: [[-0.56, -0.04], [-0.24, -0.07], [-0.24, -0.03], [-0.56, 0.06]], color: '#7b4423' },
@@ -76,7 +76,7 @@ export const GUNS = {
     ],
   },
   sniper: {
-    name: 'Снайперская винтовка', mass: 7, rate: 1.3, dmg: 170, imp: 36, spread: 0.0008, recoil: 15, snd: 'sniper', flash: 1.8, pen: 2.6, tracer: '#ffffff', tracerW: 1.8,
+    name: 'Снайперская винтовка', mass: 7, gore: 2, rate: 1.3, dmg: 170, imp: 36, spread: 0.0008, recoil: 15, snd: 'sniper', flash: 1.8, pen: 2.6, tracer: '#ffffff', tracerW: 1.8,
     grip: [-0.255, 0.01], muzzle: [0.805, -0.067], eject: [-0.1, -0.095],
     shapes: [
       { pts: [[-0.62, -0.06], [-0.3, -0.08], [-0.3, -0.02], [-0.62, 0.065]], color: '#3d4a2c' },
@@ -263,7 +263,7 @@ export class Firearm extends Weapon {
       for (let i = 0; i < (d.pellets || 1); i++) {
         const a = base + gauss() * d.spread;
         sim.hitscan(mz.x, mz.y, Math.cos(a), Math.sin(a), {
-          damage: d.dmg, impulse: d.imp, pen: d.pen || 1, group, tracer: d.tracer, tracerW: d.tracerW, range: d.pellets ? 60 : 160,
+          damage: d.dmg, impulse: d.imp, pen: d.pen || 1, group, tracer: d.tracer, tracerW: d.tracerW, range: d.pellets ? 60 : 160, gore: d.gore,
         });
       }
       sim.effects.muzzle(mz.x, mz.y, dir.x, dir.y, d.flash || 1);

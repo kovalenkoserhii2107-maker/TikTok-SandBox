@@ -9,6 +9,7 @@ import { findItem } from './catalog.js';
 import { saveSlot, loadSlot } from './scene.js';
 import { makeLink, addWire } from './links.js';
 import { clamp, wrapAngle, rand, TAU } from './util.js';
+import { Media } from './media.js';
 
 const SETTINGS_KEY = 'kaboom.settings.v1';
 
@@ -43,6 +44,7 @@ class Game {
     this.resize();
     this.resetCamera();
     this.ui = new UI(this);
+    this.media = new Media(this);
     this.demoScene();
     this.last = performance.now();
     requestAnimationFrame((t) => this.frame(t));
@@ -83,6 +85,8 @@ class Game {
     p.acc = 0; p.n = 0; p.t = 0;
     if (this.settings.fps) this.ui.showFps(p.fps, this.r.q.name);
     if (this.settings.gfx !== 'auto' || document.hidden) return;
+    // Во время записи и повтора качество не меняем: размер кадра должен быть постоянным.
+    if (this.media && (this.media.rec.active || this.media.replay.active)) return;
     const i = QUALITY_ORDER.indexOf(this.autoLevel);
     if (avg > 1 / 38 && i > 0) {
       this.autoLevel = QUALITY_ORDER[i - 1];
@@ -105,12 +109,19 @@ class Game {
     this.r.resize(w, h);
     if (this.wasPortrait !== undefined && this.wasPortrait !== portrait) this.resetCamera();
     this.wasPortrait = portrait;
+    if (this.media) this.media.layoutFrame();
+  }
+
+  // Обычный масштаб камеры для текущего экрана.
+  baseScale() {
+    const r = this.r;
+    return r.H > r.W ? clamp(r.W / 12, 14, 60) : clamp(Math.min(r.W / 22, r.H / 11), 14, 70);
   }
 
   resetCamera() {
     const r = this.r;
     const portrait = r.H > r.W;
-    r.cam.s = portrait ? clamp(r.W / 12, 14, 60) : clamp(Math.min(r.W / 22, r.H / 11), 14, 70);
+    r.cam.s = this.baseScale();
     r.cam.x = 0;
     const groundY = portrait ? r.H - 200 : r.H * 0.8;
     r.cam.y = -(groundY - r.vp.y) / r.cam.s;
@@ -128,6 +139,10 @@ class Game {
   }
 
   clearScene() {
+    if (this.media) {
+      if (this.media.replay.active) this.media.closeReplay();
+      this.media.buf.clear();
+    }
     this.control(null);
     if (this.drag) this.endDrag();
     this.pending = null;
@@ -141,6 +156,7 @@ class Game {
 
   zoomAt(sx, sy, factor) {
     const r = this.r;
+    if (this.media) this.media.director.userMoved();
     const before = r.toWorld(sx, sy);
     r.cam.s = clamp(r.cam.s * factor, 6, 180);
     const after = r.toWorld(sx, sy);
@@ -151,6 +167,7 @@ class Game {
 
   pan(dx, dy) {
     const r = this.r;
+    if (this.media) this.media.director.userMoved();
     r.cam.x -= dx / r.cam.s;
     r.cam.y -= dy / r.cam.s;
     this.clampCam();
@@ -457,6 +474,13 @@ class Game {
     if (rawDt < 0.5) this.trackPerf(rawDt);
     const sim = this.sim;
     const r = this.r;
+    if (this.media.replay.active) {
+      this.media.frameReplay(dt);
+      this.media.afterRender(dt);
+      this.ui.tick(dt);
+      requestAnimationFrame((t) => this.frame(t));
+      return;
+    }
     if (this.drag && this.drag.rot != null && !this.drag.body.isStatic()) {
       const b = this.drag.body;
       b.setAngularVelocity(clamp(wrapAngle(this.drag.rot - b.getAngle()) * 14, -25, 25));
@@ -467,7 +491,7 @@ class Game {
     if (this.controlled && this.controlled.removed) this.control(null);
     if (this.controlled) {
       engineSet(this.controlled.ctrl.x);
-      if (this.settings.follow) {
+      if (this.settings.follow && !this.media.director.on) {
         const p = this.controlled.chassis.getPosition();
         r.cam.x += (p.x - r.cam.x) * Math.min(1, dt * 3);
         const ty = Math.min(p.y - 2.5, r.cam.y);
@@ -482,8 +506,10 @@ class Game {
       r.shakeY = (Math.random() - 0.5) * sh * 0.04;
       sim.shakeAmt *= Math.exp(-dt * 5);
     } else { r.shakeX = r.shakeY = 0; sim.shakeAmt = 0; }
+    this.media.director.update(dt);
     setListener(r.cam.x, r.cam.y, r.cam.s);
     r.drawScene(sim, this.worldDef, { overlay: (rr) => this.overlay(rr) });
+    this.media.afterRender(dt);
     this.ui.tick(dt);
     requestAnimationFrame((t) => this.frame(t));
   }
