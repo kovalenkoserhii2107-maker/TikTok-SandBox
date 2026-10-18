@@ -18,6 +18,8 @@ const ASSETS = [
   './js/catalog.js',
   './js/scene.js',
   './js/textures.js',
+  './js/links.js',
+  './js/entities/machines.js',
   './js/entities/base.js',
   './js/entities/ragdoll.js',
   './js/entities/props.js',

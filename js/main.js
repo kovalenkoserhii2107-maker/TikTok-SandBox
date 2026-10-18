@@ -7,42 +7,10 @@ import { initPWA } from './pwa.js';
 import { initAudio, setTimeRate, setListener, setSoundEnabled, engineStart, engineStop, engineSet, sfx } from './audio.js';
 import { findItem } from './catalog.js';
 import { saveSlot, loadSlot } from './scene.js';
+import { makeLink, addWire } from './links.js';
 import { clamp, wrapAngle, rand, TAU } from './util.js';
 
 const SETTINGS_KEY = 'kaboom.settings.v1';
-
-function drawRope(r, l) {
-  const j = l.joint;
-  const a = j.getAnchorA(), b = j.getAnchorB();
-  const ctx = r.ctx;
-  r.face(-0.25);
-  const d = Math.hypot(b.x - a.x, b.y - a.y);
-  const slack = Math.max(0, l.maxLength - d);
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 + slack * 0.7;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = '#6e5130';
-  ctx.lineWidth = 0.045;
-  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(mx, my, b.x, b.y); ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,225,170,0.4)';
-  ctx.lineWidth = 0.014;
-  ctx.setLineDash([0.05, 0.05]);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = '#4a4f57';
-  for (const p of [a, b]) { ctx.beginPath(); ctx.arc(p.x, p.y, 0.045, 0, TAU); ctx.fill(); }
-  r.screen();
-}
-
-function drawWeld(r, l) {
-  const a = l.joint.getAnchorA();
-  const ctx = r.ctx;
-  r.face(-0.4);
-  ctx.fillStyle = '#ffb02e';
-  ctx.strokeStyle = '#5a3a10';
-  ctx.lineWidth = 0.015;
-  ctx.beginPath(); ctx.arc(a.x, a.y, 0.05, 0, TAU); ctx.fill(); ctx.stroke();
-  r.screen();
-}
 
 class Game {
   constructor() {
@@ -63,6 +31,7 @@ class Game {
     this.pending = null;
     this.mouse = null;
     this.history = [];
+    this.linkMode = 'rope';
     // Стартовый уровень для «Авто» — по мощности устройства.
     const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3;
     this.autoLevel = weak ? 'medium' : 'high';
@@ -231,7 +200,7 @@ class Game {
   }
 
   loadScene(n) {
-    const c = loadSlot(this, n, { rope: drawRope, weld: drawWeld });
+    const c = loadSlot(this, n);
     if (c < 0) this.ui.toast('Слот пуст');
     else this.ui.toast(`Загружено объектов: ${c}`);
     this.ui.markWorld();
@@ -284,8 +253,7 @@ class Game {
           this.ui.toast(`${ent.name}: здоров`);
         }
         break;
-      case 'rope':
-      case 'weld':
+      case 'link':
         this.connect(w, body);
         break;
     }
@@ -293,29 +261,27 @@ class Game {
 
   connect(w, body) {
     const sim = this.sim;
-    if (this.tool === 'weld' && !body) { this.ui.toast('Нажми на объект'); return; }
+    const mode = this.linkMode;
+    const needBody = mode === 'weld' || mode === 'wire';
+    if (needBody && !body) { this.ui.toast('Нажми на объект'); return; }
     const target = body || sim.ground;
     if (!this.pending) {
       this.pending = { body: target, local: target.getLocalPoint(V(w.x, w.y)) };
-      this.ui.toast('Теперь вторая точка');
+      this.ui.toast(mode === 'wire' ? 'Теперь приёмник сигнала' : 'Теперь вторая точка');
       return;
     }
     const a = this.pending;
     this.pending = null;
     if (a.body === target) return;
-    const pa = a.body.getWorldPoint(a.local), pb = V(w.x, w.y);
-    if (this.tool === 'rope') {
-      const len = Math.max(0.15, Math.hypot(pa.x - pb.x, pa.y - pb.y));
-      const j = sim.world.createJoint(new pl.RopeJoint({
-        bodyA: a.body, bodyB: target, localAnchorA: a.local, localAnchorB: target.getLocalPoint(pb), maxLength: len, collideConnected: true,
-      }));
-      sim.addLink(j, { type: 'rope', maxLength: len, breakForce: 90000, draw: drawRope });
+    const lb = target.getLocalPoint(V(w.x, w.y));
+    if (mode === 'wire') {
+      const ea = sim.entAt(a.body), eb = sim.entAt(target);
+      if (!ea || !eb || ea === eb) return;
+      addWire(sim, ea, a.body, a.local, eb, target, lb);
+      if (!ea.isSource && !eb.isSource) this.ui.toast('Подсказка: на одном конце должен быть источник — кнопка, таймер или лазер', 3000);
     } else {
-      const j = sim.world.createJoint(new pl.WeldJoint({}, a.body, target, V((pa.x + pb.x) / 2, (pa.y + pb.y) / 2)));
-      sim.addLink(j, { type: 'weld', breakForce: 120000, draw: drawWeld });
+      makeLink(sim, mode, a.body, a.local, target, lb);
     }
-    a.body.setAwake(true);
-    target.setAwake(true);
     sfx.click(w);
   }
 
@@ -439,6 +405,9 @@ class Game {
         void c;
         break;
       }
+      case 'unwire':
+        sim.wires = sim.wires.filter((w) => w.a !== e && w.b !== e);
+        break;
       case 'delete':
         if (this.controlled === e) this.control(null);
         sim.remove(e);

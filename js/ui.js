@@ -7,6 +7,7 @@ import { initAudio, sfx, setSoundEnabled, isSoundEnabled } from './audio.js';
 import { clamp, wrapAngle, TAU } from './util.js';
 import { showInstall, canInstall } from './pwa.js';
 import { slotInfo } from './scene.js';
+import { LINK_MODES } from './links.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -31,6 +32,10 @@ const ICONS = {
   down: '<path d="M5 9l7 7 7-7"/>',
   fire: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/>',
   bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
+  link: '<path d="M10 14a4 4 0 005.66 0l3-3a4 4 0 00-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 00-5.66 0l-3 3a4 4 0 005.66 5.66l1-1"/>',
+  hinge: '<circle cx="12" cy="12" r="3"/><path d="M12 9V3M14.5 13.5l5 4M9.5 13.5l-5 4"/>',
+  spring: '<path d="M12 2v3l-5 2 10 3-10 3 10 3-5 2v4"/>',
+  wire: '<path d="M4 18c4 0 4-12 8-12s4 12 8 12"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="18" r="1.6"/>',
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/>',
   cam: '<path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
 };
@@ -39,8 +44,7 @@ const icon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 const TOOLS = [
   { id: 'drag', name: 'Рука', icon: 'hand', hint: 'Тяни объекты. Короткое нажатие — активировать (выстрел, таймер, техника).' },
   { id: 'freeze', name: 'Заморозить', icon: 'freeze', hint: 'Нажми на объект — он замрёт в воздухе. Ещё раз — разморозить.' },
-  { id: 'rope', name: 'Верёвка', icon: 'rope', hint: 'Нажми на две точки. Пустое место — крепление к фону.' },
-  { id: 'weld', name: 'Сварка', icon: 'weld', hint: 'Нажми на два объекта, чтобы намертво соединить.' },
+  { id: 'link', name: 'Связь', icon: 'link', hint: 'Выбери тип: верёвка, сварка, шарнир, пружина или провод.' },
   { id: 'heal', name: 'Лечить', icon: 'heal', hint: 'Нажми на персонажа — полностью исцелит и пришьёт конечности.' },
   { id: 'delete', name: 'Удалить', icon: 'trash', hint: 'Нажми на объект, чтобы удалить.' },
 ];
@@ -85,6 +89,16 @@ export class UI {
       tools.appendChild(b);
     }
     this.setTool('drag', true);
+    const lm = $('#linkModes');
+    const modeIcon = { rope: 'rope', weld: 'weld', hinge: 'hinge', spring: 'spring', wire: 'wire' };
+    for (const m of LINK_MODES) {
+      const b = document.createElement('button');
+      b.dataset.mode = m.id;
+      b.innerHTML = icon(modeIcon[m.id]) + `<span>${m.name}</span>`;
+      b.onclick = () => { g.linkMode = m.id; g.pending = null; this.markLink(); this.toast(m.hint, 2400); sfx.ui(); };
+      lm.appendChild(b);
+    }
+    this.markLink();
 
     $('#btnMenu').onclick = () => this.openMenu();
     $('#menuClose').onclick = () => this.closeMenu();
@@ -226,8 +240,16 @@ export class UI {
     g.pending = null;
     this.setPlace(null, true);
     for (const b of document.querySelectorAll('.tool')) b.classList.toggle('on', b.dataset.tool === id);
+    $('#linkModes').classList.toggle('hidden', id !== 'link');
     const t = TOOLS.find((t) => t.id === id);
-    if (!silent && t) this.toast(t.hint, 2600);
+    if (!silent && t) {
+      const m = LINK_MODES.find((m) => m.id === g.linkMode);
+      this.toast(id === 'link' && m ? `${m.name}: ${m.hint}` : t.hint, 2600);
+    }
+  }
+
+  markLink() {
+    for (const b of document.querySelectorAll('#linkModes button')) b.classList.toggle('on', b.dataset.mode === this.game.linkMode);
   }
 
   updatePause() {
@@ -396,6 +418,15 @@ export class UI {
       if (e.holding) add('drop', 'Бросить оружие', '✋');
     }
     if (e.spawnRef) add('clone', 'Копировать', '⧉');
+    if (e.menu) {
+      for (const m of e.menu()) {
+        const b = document.createElement('button');
+        b.innerHTML = `<i>${m.icon}</i>${m.label}`;
+        b.onclick = () => { m.fn(); sfx.ui(); this.closeCtx(); };
+        m && this.ctxInsert(b);
+      }
+    }
+    if (g.sim.wires.some((w) => w.a === e || w.b === e)) add('unwire', 'Убрать провода', '✂️');
     add('delete', 'Удалить', '🗑️', 'danger');
     m.classList.remove('hidden');
     const w = m.offsetWidth, h = m.offsetHeight;
@@ -405,6 +436,8 @@ export class UI {
   }
 
   closeCtx() { $('#ctx').classList.add('hidden'); }
+
+  ctxInsert(b) { $('#ctx').appendChild(b); }
 
   openMenu() {
     this.renderSlots();

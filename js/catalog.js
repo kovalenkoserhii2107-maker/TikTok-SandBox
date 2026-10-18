@@ -4,6 +4,7 @@ import { Prop } from './entities/props.js';
 import { Firearm, Melee } from './entities/weapons.js';
 import { Explosive } from './entities/explosives.js';
 import { Vehicle } from './entities/vehicles.js';
+import { Button, Timer, Laser, Motor, Piston, Lamp, ShockPlate } from './entities/machines.js';
 
 const rd = (type) => (sim, x, y, f) => new Ragdoll(sim, x, y, type, f);
 const pr = (id) => (sim, x, y, f) => new Prop(sim, x, y, id, f);
@@ -67,6 +68,18 @@ export const CATEGORIES = [
       { id: 'syrZombie', name: 'Зомби-вирус', desc: 'Через пару секунд превращает человека в зомби.', make: mel('syrZombie') },
       { id: 'syrPoison', name: 'Яд', desc: 'Судороги и смерть за несколько секунд.', make: mel('syrPoison') },
       { id: 'syrCryo', name: 'Криозаморозка', desc: 'Замораживает в статую на 15 с. Ударишь — расколется.', make: mel('syrCryo') },
+    ],
+  },
+  {
+    id: 'machines', name: 'Механизмы', items: [
+      { id: 'button', name: 'Кнопка', desc: 'Даёт сигнал, когда на неё наступают или нажимают. Соедини проводом с чем угодно.', make: (s, x, y) => new Button(s, x, y) },
+      { id: 'timer', name: 'Таймер', desc: 'Нажми — запустится и будет слать сигнал каждые N секунд. Интервал — в меню объекта.', make: (s, x, y) => new Timer(s, x, y) },
+      { id: 'laser', name: 'Лазер-датчик', desc: 'Даёт сигнал, когда кто-то пересекает луч. Для ловушек.', make: (s, x, y, f) => new Laser(s, x, y, f) },
+      { id: 'motor', name: 'Мотор', desc: 'Вращает диск. Приварь к нему что-нибудь. Сигнал — вкл/выкл.', make: (s, x, y) => new Motor(s, x, y, 1, false) },
+      { id: 'saw', name: 'Циркулярная пила', desc: 'Режет всё, что касается диска. Сигнал — вкл/выкл.', make: (s, x, y) => new Motor(s, x, y, 1, true) },
+      { id: 'piston', name: 'Поршень', desc: 'Резко выталкивает платформу вверх — катапульта. Сигнал — вверх/вниз.', make: (s, x, y) => new Piston(s, x, y) },
+      { id: 'lamp', name: 'Лампа', desc: 'Светит. Сигнал — вкл/выкл.', make: (s, x, y) => new Lamp(s, x, y) },
+      { id: 'shock', name: 'Электрошокер', desc: 'Плита под напряжением: бьёт током всех, кто касается. Сигнал — вкл/выкл.', make: (s, x, y) => new ShockPlate(s, x, y) },
     ],
   },
   {

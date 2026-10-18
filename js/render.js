@@ -2,6 +2,7 @@
 // в настоящей перспективной проекции. Фон и земля уходят вглубь сцены.
 import { clamp, convexHull, shade, TAU } from './util.js';
 import { texPattern, TEX, MAT_TEX } from './textures.js';
+import { drawWires } from './links.js';
 
 const DCAM = 24; // расстояние камеры до плоскости физики (м)
 
@@ -200,6 +201,7 @@ export class Renderer {
     this.collect(sim);
     this.drawItems();
     for (const l of sim.links) if (l.draw && !l.dead) l.draw(this, l);
+    drawWires(this, sim);
     for (const e of sim.entities) if (e.drawOverlay) e.drawOverlay(this);
     sim.effects.draw(this);
     if (worldDef.drawForeground) worldDef.drawForeground(this, sim.time, sim);

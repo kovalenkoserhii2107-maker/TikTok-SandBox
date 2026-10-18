@@ -62,9 +62,12 @@ export class Sim {
     this.onBodyDestroyed = null;
     this.burning = new Set();
     this.groundFires = [];
+    this.wires = [];
+    this.waters = [];
     this.makeGround();
     this.world.on('begin-contact', (c) => this._begin(c));
     this.world.on('post-solve', (c, imp) => this._post(c, imp));
+    this.world.on('end-contact', (c) => this._end(c));
   }
 
   makeGround() {
@@ -186,6 +189,8 @@ export class Sim {
 
   clear() {
     this.burning.clear();
+    this.wires.length = 0;
+    this.waters.length = 0;
     this.groundFires.length = 0;
     for (const e of this.entities.slice()) {
       e.removed = true;
@@ -239,6 +244,10 @@ export class Sim {
     for (const e of this.entities) if (!e.removed) e.update(dt);
     this.runTimers();
     this.updateFire(dt);
+    if (this.wires.length) {
+      this.wires = this.wires.filter((w) => !w.a.removed && !w.b.removed);
+      for (const w of this.wires) if (w.flash > 0) w.flash -= dt;
+    }
     this.flush();
     this.effects.update(dt);
   }
@@ -434,6 +443,29 @@ export class Sim {
     const ea = this.entAt(fa.getBody()), eb = this.entAt(fb.getBody());
     if (ea && ea.onBegin) ea.onBegin(c, fa, fb);
     if (eb && eb.onBegin) eb.onBegin(c, fb, fa);
+  }
+
+  _end(c) {
+    const fa = c.getFixtureA(), fb = c.getFixtureB();
+    const ea = this.entAt(fa.getBody()), eb = this.entAt(fb.getBody());
+    if (ea && ea.onEnd) ea.onEnd(c, fa, fb);
+    if (eb && eb.onEnd) eb.onEnd(c, fb, fa);
+  }
+
+  // Сигнал по проводам: источник → все подключённые приёмники.
+  signal(src) {
+    if (src.removed) return;
+    const now = this.time;
+    if (src._sigT === now) return;
+    src._sigT = now;
+    for (const w of this.wires) {
+      let dst = null;
+      if (w.a === src) dst = w.b; else if (w.b === src) dst = w.a;
+      if (!dst || dst.removed) continue;
+      w.flash = 0.35;
+      if (dst.isSource) continue;
+      this.defer(() => { if (!dst.removed) dst.onSignal(src); });
+    }
   }
 
   _post(c, imp) {

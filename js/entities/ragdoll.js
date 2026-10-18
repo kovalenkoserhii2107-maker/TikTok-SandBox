@@ -83,6 +83,7 @@ export class Ragdoll extends Entity {
     this.dripAcc = 0;
     this.infected = false;
     this.onFireT = 0;
+    this.shockT = 0;
     this.adrenaline = 0;
     this.poison = 0;
     this.frozen = 0;
@@ -363,6 +364,16 @@ export class Ragdoll extends Entity {
 
   preStep(h) {
     const T = this.type;
+    if (this.shockT > 0) {
+      // Удар током: судорожные сокращения всех мышц (даже у мёртвых).
+      this.relaxed = false;
+      for (const p of this.partList) {
+        if (!p.joint) continue;
+        p.joint.setMotorSpeed(rand(-18, 18));
+        p.joint.setMaxMotorTorque((p.tq || 60) * 1.4 + 20);
+      }
+      return;
+    }
     if (this.frozen > 0) {
       // Заморожен: суставы как камень.
       if (!this.frozenApplied) {
@@ -439,6 +450,7 @@ export class Ragdoll extends Entity {
     this.getUpT -= dt;
     this.getUpCd -= dt;
     this.onFireT -= dt;
+    this.shockT -= dt;
     if (this.adrenaline > 0) {
       this.adrenaline -= dt;
       this.pain = 0;
@@ -719,6 +731,7 @@ export class Ragdoll extends Entity {
   }
 
   onBegin(c, myFix, otherFix) {
+    if (otherFix.isSensor()) return;
     const mb = myFix.getBody(), ob = otherFix.getBody();
     const ud = mb.getUserData();
     const wm = c.getWorldManifold(null);
@@ -771,6 +784,17 @@ export class Ragdoll extends Entity {
       this.sim.effects.bloodSpray(bp.x, bp.y, 0, -1, 8, 2.5, 'blood');
       e.infect();
     });
+  }
+
+  shock(body, dt) {
+    const T = this.type;
+    this.shockT = 0.25;
+    const p = this.partOf(body) || this.parts.chest;
+    this.damage(this.parts.chest, dt * (T.robot ? 30 : 14), 'shock');
+    this.damage(p, dt * 6, 'shock');
+    if (this.alive) this.stun = Math.max(this.stun, 1.2);
+    this.burn = Math.min(0.6, this.burn + dt * 0.02);
+    if (this.frozen > 0) { this.frozen = 0; this.frozenApplied = false; }
   }
 
   onBurn(body, dt) {

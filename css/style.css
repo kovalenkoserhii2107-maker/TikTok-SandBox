@@ -261,6 +261,30 @@ body:has(.drive:not(.hidden)) .tools,
 body:has(.drive:not(.hidden)) .fab,
 body:has(.drive:not(.hidden)) .placebar { display: none; }
 
+/* Режимы инструмента «Связь» */
+.linkmodes {
+  position: absolute;
+  left: calc(84px + var(--sal));
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.linkmodes button { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.linkmodes button svg { width: 18px; height: 18px; }
+.linkmodes button.on { background: rgba(255, 122, 26, 0.18); color: var(--accent2); }
+@media (orientation: portrait) {
+  .linkmodes { left: 50%; top: auto; bottom: calc(146px + var(--sab)); transform: translateX(-50%); flex-direction: row; }
+  .linkmodes button { flex-direction: column; gap: 2px; font-size: 10px; padding: 6px 8px; }
+}
+
 /* Выбор графики и FPS */
 .opt.col { flex-direction: column; align-items: stretch; gap: 8px; }
 .seg { display: flex; gap: 4px; background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 4px; }

@@ -442,7 +442,7 @@ export class Melee extends Weapon {
 
   onBegin(c, myFix, otherFix) {
     const fud = myFix.getUserData() || {};
-    if (!fud.sharp) return;
+    if (!fud.sharp || otherFix.isSensor()) return;
     const ob = otherFix.getBody();
     const oud = ob.getUserData();
     const e = oud && oud.ent;
@@ -592,8 +592,8 @@ export class Projectile extends Entity {
     if (this.life <= 0 || p.y > 2) this.boom();
   }
 
-  onBegin() {
-    if (this.hit) return;
+  onBegin(c, myFix, otherFix) {
+    if (this.hit || (otherFix && otherFix.isSensor())) return;
     this.hit = true;
     this.sim.defer(() => this.boom());
   }

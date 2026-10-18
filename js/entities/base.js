@@ -136,6 +136,9 @@ export class Entity {
   update() {}
   activate() { return false; }
 
+  // Сигнал по проводу (от кнопки, таймера, лазера).
+  onSignal() { this.activate(this.main); }
+
   onBullet(body, fix, point, dir, dmg, normal) {
     const mat = (fix.getUserData() || {}).mat;
     this.sim.effects.impact(mat, point.x, point.y, -dir.x, -dir.y, 1);
