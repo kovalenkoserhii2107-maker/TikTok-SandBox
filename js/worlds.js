@@ -607,6 +607,253 @@ function winterSnow(r, t) {
   ctx.globalAlpha = 1;
 }
 
+// ---------------- Военная база ----------------
+function baseLayout(rnd) {
+  const hills = [], barracks = [], bags = [], posts = [];
+  for (let x = -900; x < 900; x += 50 + rnd() * 100) hills.push({ x, w: 120 + rnd() * 160, h: 15 + rnd() * 25 });
+  for (let x = -140; x < 140; x += 22 + rnd() * 10) barracks.push({ x, w: 12 + rnd() * 5, h: 3.5 + rnd() * 1.5 });
+  for (let x = -120; x < 120; x += 9 + rnd() * 12) bags.push({ x, n: 3 + Math.floor(rnd() * 3) });
+  for (let x = -150; x < 150; x += 3) posts.push(x);
+  return { hills, barracks, bags, posts };
+}
+
+function drawBase(r, t) {
+  const L = layout('base', baseLayout);
+  const ctx = r.ctx;
+  sky(r, ['#7d8a97', '#a9b4bd', '#d5dad8']);
+  const zf = 260;
+  r.face(zf);
+  ctx.fillStyle = '#6f7a62';
+  const [fa, fb] = r.xRange(zf, 80);
+  ctx.beginPath(); ctx.moveTo(fa, 0);
+  for (const h of L.hills) { if (h.x + h.w < fa || h.x > fb) continue; ctx.lineTo(h.x, 0); ctx.quadraticCurveTo(h.x + h.w / 2, -h.h * 2, h.x + h.w, 0); }
+  ctx.lineTo(fb, 0); ctx.lineTo(fb, 4); ctx.lineTo(fa, 4); ctx.fill();
+  haze(r, '#d5dad8', 40, 25, 0.7);
+  r.screen();
+  ctx.fillStyle = '#7b7356';
+  ctx.fillRect(0, r.vp.y, r.W, r.H - r.vp.y);
+  groundBand(r, 22, 2000, '#7f7a58');
+  groundBand(r, 6, 22, '#8d8565');
+  groundBand(r, NEAR_Z, 6, '#9a9384');
+  for (let z = -2; z < 6; z += 2) groundLineX(r, z, 'rgba(60,60,55,0.18)', 1);
+  // Казармы и ангар.
+  for (const b of L.barracks) {
+    const [px] = r.P(b.x, 0, 40);
+    if (px < -400 || px > r.W + 400) continue;
+    r.box3d(b.x, -b.h, b.x + b.w, 0, 40, 48, '#7a8063', (c) => {
+      c.fillStyle = '#3c4232';
+      for (let x = b.x + 1; x < b.x + b.w - 1; x += 2.2) c.fillRect(x, -b.h + 1, 1.1, 0.9);
+      c.fillStyle = '#5c624a'; c.fillRect(b.x - 0.3, -b.h - 0.4, b.w + 0.6, 0.45);
+    });
+  }
+  const hx = 12;
+  r.box3d(hx, -8, hx + 22, 0, 24, 40, '#6d7458', (c) => {
+    c.fillStyle = '#4c5240';
+    c.beginPath(); c.moveTo(hx, -8); c.quadraticCurveTo(hx + 11, -15, hx + 22, -8); c.fill();
+    c.fillStyle = '#2f3328'; c.fillRect(hx + 4, -6.5, 14, 6.5);
+    c.strokeStyle = 'rgba(0,0,0,0.25)'; c.lineWidth = 0.15;
+    for (let x = hx + 5.5; x < hx + 18; x += 1.5) { c.beginPath(); c.moveTo(x, -6.5); c.lineTo(x, 0); c.stroke(); }
+    c.fillStyle = '#e8e2c8';
+    c.save(); c.translate(hx + 9.5, -9.3); c.scale(0.02, 0.02); c.font = '900 100px system-ui, sans-serif'; c.fillText('★ 07', 0, 0); c.restore();
+  });
+  // Вышка.
+  const tx = -14;
+  r.face(14);
+  ctx.strokeStyle = '#3d3a30'; ctx.lineWidth = 0.25;
+  ctx.beginPath();
+  ctx.moveTo(tx - 1.6, 0); ctx.lineTo(tx - 1.0, -7); ctx.moveTo(tx + 1.6, 0); ctx.lineTo(tx + 1.0, -7);
+  ctx.moveTo(tx - 1.4, -2); ctx.lineTo(tx + 1.2, -4.5); ctx.moveTo(tx + 1.4, -2); ctx.lineTo(tx - 1.2, -4.5);
+  ctx.stroke();
+  r.box3d(tx - 1.5, -9, tx + 1.5, -7, 13, 16, '#5f5a46', (c) => { c.fillStyle = '#1c1d1a'; c.fillRect(tx - 1.2, -8.7, 2.4, 0.9); });
+  r.box3d(tx - 1.8, -9.6, tx + 1.8, -9, 12.8, 16.2, '#4a4636');
+  // Забор из сетки.
+  const zfn = 9;
+  r.face(zfn);
+  const [xa, xb] = r.xRange(zfn, 2);
+  ctx.strokeStyle = 'rgba(70,75,70,0.55)'; ctx.lineWidth = 0.03;
+  ctx.beginPath();
+  for (let x = Math.floor(xa); x < xb; x += 0.35) { ctx.moveTo(x, 0); ctx.lineTo(x + 2.2, -2.2); ctx.moveTo(x, -2.2); ctx.lineTo(x + 2.2, 0); }
+  ctx.stroke();
+  ctx.fillStyle = '#4b4f4a';
+  for (const x of L.posts) if (x > xa && x < xb) ctx.fillRect(x - 0.05, -2.5, 0.1, 2.5);
+  ctx.strokeStyle = '#6a6e68'; ctx.lineWidth = 0.04;
+  ctx.beginPath(); ctx.moveTo(xa, -2.45); ctx.lineTo(xb, -2.45); ctx.stroke();
+  // Мешки с песком.
+  for (const b of L.bags) {
+    const [px] = r.P(b.x, 0, 5);
+    if (px < -100 || px > r.W + 100) continue;
+    r.face(5);
+    for (let i = 0; i < b.n; i++) {
+      for (let row = 0; row < 2; row++) {
+        ctx.fillStyle = row ? '#a49470' : '#988a66';
+        ctx.beginPath(); ctx.ellipse(b.x + i * 0.62 + row * 0.31, -0.18 - row * 0.32, 0.33, 0.18, 0, 0, TAU); ctx.fill();
+      }
+    }
+  }
+  groundFront(r, '#5c5440', '#8d8565');
+}
+
+// ---------------- Крыша небоскрёба ----------------
+function roofLayout(rnd) {
+  const far = [], mid = [];
+  for (let x = -900; x < 900; x += 18 + rnd() * 30) far.push({ x, w: 16 + rnd() * 30, top: -40 + rnd() * 90 });
+  for (let x = -260; x < 260; x += 14 + rnd() * 16) mid.push({ x, w: 10 + rnd() * 14, top: -15 + rnd() * 45, c: ['#8f9fae', '#a5b2bd', '#7f8fa0', '#b8b0a4'][Math.floor(rnd() * 4)] });
+  const units = [];
+  for (let x = -60; x < 60; x += 11 + rnd() * 8) units.push({ x, kind: rnd() < 0.3 ? 'tower' : 'ac' });
+  return { far, mid, units };
+}
+
+function drawRoof(r, t) {
+  const L = layout('roof', roofLayout);
+  const ctx = r.ctx;
+  sky(r, ['#2f6db8', '#7fb3e6', '#d8ecfb']);
+  r.screen();
+  const sx = r.W * 0.15 - r.cam.x * 0.3, sy = r.vp.y * 0.3;
+  const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, 90);
+  g.addColorStop(0, 'rgba(255,250,225,1)'); g.addColorStop(0.2, 'rgba(255,240,200,0.9)'); g.addColorStop(1, 'rgba(255,240,200,0)');
+  ctx.fillStyle = g; ctx.fillRect(sx - 90, sy - 90, 180, 180);
+  // Город далеко внизу: основания зданий уходят ниже уровня крыши.
+  const zf = 260;
+  r.face(zf);
+  ctx.fillStyle = '#9fb9d2';
+  const [fa, fb] = r.xRange(zf, 40);
+  ctx.beginPath();
+  for (const b of L.far) { if (b.x + b.w < fa || b.x > fb) continue; ctx.rect(b.x, b.top, b.w, 300); }
+  ctx.fill();
+  haze(r, '#d8ecfb', 60, 200, 0.55);
+  const zm = 70;
+  r.face(zm);
+  const [ma, mb] = r.xRange(zm, 20);
+  for (const b of L.mid) {
+    if (b.x + b.w < ma || b.x > mb) continue;
+    ctx.fillStyle = mix(b.c, '#d8ecfb', 0.3);
+    ctx.fillRect(b.x, b.top, b.w, 300);
+    ctx.fillStyle = 'rgba(50,70,95,0.35)';
+    ctx.beginPath();
+    for (let y = b.top + 1.5; y < b.top + 60; y += 2.6) for (let x = b.x + 0.8; x < b.x + b.w - 1; x += 1.9) ctx.rect(x, y, 1, 1.3);
+    ctx.fill();
+    ctx.fillStyle = shade(b.c, -0.2); ctx.fillRect(b.x - 0.3, b.top - 0.5, b.w + 0.6, 0.6);
+  }
+  r.screen();
+  // Крыша: гравий, вертолётная площадка, парапет.
+  const [xa, xb] = r.xRange(8, 4);
+  groundBand(r, NEAR_Z, 7, '#8e8b84');
+  r.face(0);
+  ctx.strokeStyle = 'rgba(255,255,255,0.0)';
+  r.screen();
+  const [cx, cy] = r.P(0, 0, 2);
+  const rad = r.k(2) * 3.2;
+  const [, y1] = r.P(0, 0, 2 - 3.2), [, y2] = r.P(0, 0, 2 + 3.2);
+  const ry = Math.abs(y1 - y2) / 2;
+  ctx.strokeStyle = '#f2d04b'; ctx.lineWidth = Math.max(1.5, r.k(2) * 0.18);
+  ctx.beginPath(); ctx.ellipse(cx, cy, rad, ry, 0, 0, TAU); ctx.stroke();
+  ctx.fillStyle = '#f2f2f2';
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(1, ry / rad);
+  ctx.font = `900 ${Math.round(rad * 1.2)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('H', 0, 0); ctx.restore();
+  r.box3d(xa, -0.9, xb, 0, 7, 7.5, '#a29f97', null, { side: '#7d7a73' });
+  // Вентиляция и водонапорный бак.
+  for (const u of L.units) {
+    const [px] = r.P(u.x, 0, 5);
+    if (px < -200 || px > r.W + 200) continue;
+    if (u.kind === 'ac') {
+      r.box3d(u.x, -1.3, u.x + 2.2, 0, 4.5, 6, '#c3c6c9', (c) => {
+        c.fillStyle = '#7c8186';
+        for (let i = 0; i < 6; i++) c.fillRect(u.x + 0.2 + i * 0.32, -1.1, 0.18, 0.9);
+      });
+    } else {
+      r.face(5);
+      ctx.strokeStyle = '#4d4a45'; ctx.lineWidth = 0.15;
+      ctx.beginPath(); ctx.moveTo(u.x + 0.2, 0); ctx.lineTo(u.x + 0.5, -2.5); ctx.moveTo(u.x + 2.4, 0); ctx.lineTo(u.x + 2.1, -2.5); ctx.stroke();
+      r.box3d(u.x, -5.5, u.x + 2.6, -2.5, 4.5, 6.5, '#8a6a4a', (c) => {
+        c.strokeStyle = 'rgba(40,25,10,0.5)'; c.lineWidth = 0.06;
+        for (let y = -5.2; y < -2.6; y += 0.6) { c.beginPath(); c.moveTo(u.x, y); c.lineTo(u.x + 2.6, y); c.stroke(); }
+      });
+    }
+  }
+  // Фасад нашего здания вместо земли.
+  const [na, nb] = r.xRange(NEAR_Z, 4);
+  r.face(NEAR_Z);
+  ctx.fillStyle = '#9aa3ad';
+  ctx.fillRect(na, 0, nb - na, 60);
+  ctx.fillStyle = '#4e6a85';
+  for (let x = Math.floor(na / 2.4) * 2.4; x < nb; x += 2.4) for (let y = 1.2; y < 30; y += 3) ctx.fillRect(x + 0.4, y, 1.6, 1.8);
+  ctx.fillStyle = '#c9ced4'; ctx.fillRect(na, 0, nb - na, 0.25);
+  r.screen();
+}
+
+// ---------------- Космическая станция ----------------
+function drawStation(r, t) {
+  const ctx = r.ctx;
+  const WZ = 7, CEIL = -13;
+  r.screen();
+  ctx.fillStyle = '#05070c';
+  ctx.fillRect(0, 0, r.W, r.H);
+  // Задняя стена с иллюминаторами.
+  r.face(WZ);
+  const [wa, wb] = r.xRange(WZ, 10);
+  ctx.fillStyle = '#c8ced6';
+  ctx.fillRect(wa, CEIL, wb - wa, -CEIL);
+  ctx.strokeStyle = 'rgba(60,70,85,0.4)'; ctx.lineWidth = 0.05;
+  ctx.beginPath();
+  for (let x = Math.floor(wa / 3) * 3; x < wb; x += 3) { ctx.moveTo(x, CEIL); ctx.lineTo(x, 0); }
+  for (let y = CEIL; y < 0; y += 2.2) { ctx.moveTo(wa, y); ctx.lineTo(wb, y); }
+  ctx.stroke();
+  const rnd = seeded(11);
+  for (let x = Math.floor(wa / 12) * 12; x < wb; x += 12) {
+    const cx = x + 6, cy = -7.5, rr = 2.4;
+    ctx.fillStyle = '#7d8794';
+    ctx.beginPath(); ctx.arc(cx, cy, rr + 0.4, 0, TAU); ctx.fill();
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.clip();
+    ctx.fillStyle = '#020309'; ctx.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 30; i++) ctx.fillRect(cx - rr + rnd() * rr * 2, cy - rr + rnd() * rr * 2, 0.05, 0.05);
+    if (Math.floor(x / 12) % 2 === 0) {
+      const eg = ctx.createRadialGradient(cx - 0.6, cy + 1.6, 0.2, cx, cy + 2.6, 3.2);
+      eg.addColorStop(0, '#8fd0ff'); eg.addColorStop(0.6, '#2f6fb6'); eg.addColorStop(1, '#0d2a50');
+      ctx.fillStyle = eg;
+      ctx.beginPath(); ctx.arc(cx + 0.3, cy + 3.4, 3.0, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath(); ctx.ellipse(cx - 0.5, cy + 1.0, 1.2, 0.2, 0.2, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+    ctx.strokeStyle = '#4b5462'; ctx.lineWidth = 0.15;
+    ctx.beginPath(); ctx.arc(cx, cy, rr + 0.2, 0, TAU); ctx.stroke();
+  }
+  ctx.fillStyle = '#e8b923';
+  ctx.fillRect(wa, -1.0, wb - wa, 0.35);
+  ctx.fillStyle = '#6b7380';
+  for (let x = Math.floor(wa / 2) * 2; x < wb; x += 2) ctx.fillRect(x, -12.2, 1.2, 0.5);
+  ctx.fillStyle = '#9aa3ad';
+  ctx.fillRect(wa, -3.4, wb - wa, 0.25);
+  ctx.fillRect(wa, -3.0, wb - wa, 0.12);
+  r.screen();
+  // Пол-настил и потолок.
+  groundBand(r, NEAR_Z, WZ, '#8e959e');
+  const [xa, xb] = r.xRange(WZ, 2);
+  ctx.strokeStyle = 'rgba(40,45,55,0.35)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = Math.floor(xa); x < xb; x += 1.5) { const a = r.P(x, 0, NEAR_Z), b = r.P(x, 0, WZ); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+  ctx.stroke();
+  const [ca, cb] = r.xRange(NEAR_Z, 4);
+  r.groundQuad(CEIL, NEAR_Z, WZ, ca, cb);
+  ctx.fillStyle = '#5d6571';
+  ctx.fill();
+  for (let x = Math.floor(ca / 6) * 6; x < cb; x += 6) {
+    r.groundQuad(CEIL, 1, 3, x, x + 2.5);
+    ctx.fillStyle = '#f2f7ff';
+    ctx.fill();
+  }
+  r.face(NEAR_Z);
+  ctx.fillStyle = '#3a414c';
+  ctx.fillRect(ca, CEIL - 40, cb - ca, 40);
+  ctx.fillStyle = '#e8b923';
+  ctx.fillRect(ca, CEIL - 0.3, cb - ca, 0.3);
+  r.screen();
+  groundFront(r, '#3a414c', '#9aa3ad');
+}
+
 export const WORLDS = [
   { id: 'city', name: 'Город', desc: 'Улица, дома, фонари', gravity: 9.8, drawBackground: (r, t) => drawCity(r, t, false), dust: '#a8a49c', debris: ['#5d5f63', '#7a7c80'], thumb: ['#3f86d8', '#cfe9ff', '#46494f'], sun: { x: -0.55, y: 1, z: 0.45, k: 0.45 }, grade: '#ffe9c9' },
   { id: 'night', name: 'Ночной город', desc: 'Огни окон и фонарей', gravity: 9.8, drawBackground: (r, t) => drawCity(r, t, true), ambient: '#5a6aa0', drawLights: cityLights, dust: '#77736c', debris: ['#3a3b40', '#55565c'], thumb: ['#060b1a', '#3a3f6e', '#24252a'], sun: { x: -0.25, y: 1, z: 0.3, k: 0.22 }, grade: '#3b4a8a' },
@@ -614,6 +861,9 @@ export const WORLDS = [
   { id: 'moon', name: 'Луна', desc: 'Гравитация 1.6 м/с², огонь быстро гаснет', gravity: 1.62, noAir: true, drawBackground: drawMoon, dust: '#a3a5aa', debris: ['#7c7e83', '#5e6065'], thumb: ['#000000', '#0d0f16', '#8f9196'], sun: { x: 0.8, y: 1, z: 0.4, k: 0.65 }, grade: '#9fb0c8' },
   { id: 'lab', name: 'Полигон', desc: 'Испытательная площадка', gravity: 9.8, drawBackground: drawLab, dust: '#c2c6cc', debris: ['#9aa0a8', '#c7ccd2'], thumb: ['#2b2f36', '#d6dbe1', '#c7ccd2'], sun: { x: 0.12, y: 1, z: 0.18, k: 0.35 }, grade: '#dfe8f2' },
   { id: 'winter', name: 'Зимний лес', desc: 'Снег и ели', gravity: 9.8, drawBackground: drawWinter, drawForeground: winterSnow, ambient: '#e4ecf8', dust: '#eef3f9', debris: ['#ffffff', '#cfdbe9'], thumb: ['#4b6390', '#dbe6f3', '#eef3f9'], sun: { x: 0.6, y: 1, z: 0.5, k: 0.28 }, grade: '#9db8e6' },
+  { id: 'base', name: 'Военная база', desc: 'Ангар, вышка, забор', gravity: 9.8, drawBackground: drawBase, dust: '#a49a78', debris: ['#7b7356', '#5c5440'], thumb: ['#7d8a97', '#d5dad8', '#8d8565'], sun: { x: -0.4, y: 1, z: 0.4, k: 0.3 }, grade: '#c7c9a6' },
+  { id: 'roof', name: 'Крыша небоскрёба', desc: 'Город далеко внизу', gravity: 9.8, drawBackground: drawRoof, dust: '#b0aca3', debris: ['#8e8b84', '#6f6c66'], thumb: ['#2f6db8', '#d8ecfb', '#8e8b84'], sun: { x: 0.7, y: 1, z: 0.45, k: 0.45 }, grade: '#ffeccc' },
+  { id: 'station', name: 'Космостанция', desc: 'Невесомость, потолок', gravity: 0, ceiling: -13, drawBackground: drawStation, dust: '#c2c8d0', debris: ['#9aa3ad', '#6b7380'], thumb: ['#05070c', '#c8ced6', '#8e959e'], sun: { x: 0.05, y: 1, z: 0.1, k: 0.2 }, grade: '#cfe0ff' },
 ];
 
 export const worldById = (id) => WORLDS.find((w) => w.id === id) || WORLDS[0];

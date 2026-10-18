@@ -98,6 +98,17 @@ export class Sim {
     g.createFixture(boxShape(1, 150, -W - 1, -140), fd);
     g.createFixture(boxShape(1, 150, W + 1, -140), fd);
     this.ground = g;
+    this.ceilingFix = null;
+    this.setCeiling(this.def.ceiling);
+  }
+
+  // Потолок (космическая станция): статичная плита на высоте y.
+  setCeiling(y) {
+    if (this.ceilingFix) { this.ground.destroyFixture(this.ceilingFix); this.ceilingFix = null; }
+    if (y === undefined || y === null) return;
+    this.ceilingFix = this.ground.createFixture(boxShape(this.halfWidth + 5, 5, 0, y - 5), {
+      friction: 0.6, restitution: 0.1, filterCategoryBits: CAT.STATIC, userData: { mat: 'metal' },
+    });
   }
 
   newGroup() { return -(this.groupSeq++); }

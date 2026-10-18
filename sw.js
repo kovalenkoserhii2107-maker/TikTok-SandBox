@@ -1,5 +1,5 @@
 // Service worker: игра работает офлайн. Меняй VERSION при каждом обновлении.
-const VERSION = 'kaboom-v3';
+const VERSION = 'kaboom-v4';
 const ASSETS = [
   './',
   './index.html',

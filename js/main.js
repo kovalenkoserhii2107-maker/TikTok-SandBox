@@ -121,6 +121,7 @@ class Game {
     this.worldDef = worldById(id);
     this.sim.def = this.worldDef;
     this.sim.world.setGravity(V(0, this.worldDef.gravity));
+    this.sim.setCeiling(this.worldDef.ceiling);
     for (let b = this.sim.world.getBodyList(); b; b = b.getNext()) b.setAwake(true);
     this.settings.world = id;
     this.saveSettings();
