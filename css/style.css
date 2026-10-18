@@ -318,6 +318,7 @@ body:has(.drive:not(.hidden)) .placebar { display: none; }
   z-index: 5;
   animation: pop 0.15s ease-out;
 }
+.ctxmenu { max-height: calc(100dvh - 16px); overflow-y: auto; }
 .ctxmenu .ctitle { font-size: 12px; color: var(--muted); padding: 6px 10px 4px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 .ctxmenu button { text-align: left; padding: 11px 12px; border-radius: 10px; font-weight: 600; font-size: 15px; display: flex; gap: 10px; align-items: center; }
 .ctxmenu button:active, .ctxmenu button:hover { background: rgba(255, 255, 255, 0.08); }
@@ -661,3 +662,9 @@ body.replaying canvas#game { filter: none; }
   .cam span { font-size: 8.5px; }
   .camtools { gap: 3px; padding: 4px; top: calc(60px + var(--sat)); }
 }
+
+/* Выбор значения в меню объекта (время таймера). */
+.ctxmenu .cseg { display: flex; align-items: center; gap: 4px; padding: 4px 6px 6px 12px; }
+.ctxmenu .cseg span { font-size: 13px; color: var(--muted); margin-right: 4px; }
+.ctxmenu .cseg button { padding: 7px 8px; font-size: 13px; font-weight: 800; border-radius: 9px; background: rgba(255, 255, 255, 0.06); justify-content: center; min-width: 38px; }
+.ctxmenu .cseg button.on { background: var(--accent); color: #fff; }

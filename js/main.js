@@ -1,5 +1,5 @@
 // Точка входа: игровой цикл, камера, инструменты, спавн.
-import { Sim, pl, V } from './sim.js';
+import { Sim, pl, V, bodyAABB } from './sim.js';
 import { Renderer, QUALITY, QUALITY_ORDER } from './render.js';
 import { WORLDS, worldById } from './worlds.js';
 import { UI } from './ui.js';
@@ -175,7 +175,8 @@ class Game {
 
   clampCam() {
     const c = this.r.cam;
-    c.x = clamp(c.x, -80, 80);
+    const hw = this.sim.halfWidth - 30;
+    c.x = clamp(c.x, -hw, hw);
     const maxY = -(this.r.H * 0.55 - this.r.vp.y) / c.s;
     c.y = clamp(c.y, -150, Math.max(maxY, -1));
   }
@@ -248,7 +249,19 @@ class Game {
     const e = this.place(item, x, y, this.placeFlip);
     sim.effects.dust(x, Math.min(y, -0.1), 3, 'rgba(255,255,255,0.6)', 0.2);
     sfx.ui();
-    if (e.isC4) this.ui.toast('C4 прилипает к поверхностям. Взрыв — кнопкой «Детонатор»', 2600);
+    const hold = 'Подержи палец на нём (ПК — правая кнопка) — меню';
+    if (e.isC4) this.ui.toast(`C4 прилипает к поверхностям. Взрыв — кнопкой «Детонатор». ${hold}: таймер`, 3200);
+    else if (e.isExplosive) {
+      const id = e.expId;
+      const msg = {
+        bomb: `Нажми на бомбу — взведётся и взорвётся от удара: подними и брось. ${hold}: таймер`,
+        mine: `Мина взведётся через секунду и сработает, если на неё наступить. ${hold}: таймер, разрядить`,
+        barrel: 'Нажми на бочку — взорвётся сразу. Ещё она взрывается от пуль и огня',
+        molotov: 'Подними и брось — бутылка разобьётся и разольёт огонь',
+      }[id] || `${e.name}: нажми — пойдёт таймер ${e.fuseSet} с. ${hold}: время таймера, взорвать сейчас`;
+      this.ui.toast(msg, 3400);
+    } else if (e.isMachine && !e.isSource) this.ui.toast('Нажми — включить/выключить. Или соедини проводом с кнопкой, таймером или лазером: «Связь» → «Провод»', 3200);
+    else if (e.isMachine) this.ui.toast('Даёт сигнал. Соедини проводом с тем, что нужно запустить: «Связь» → «Провод»', 3000);
     else if (e.isRagdoll && e.typeId === 'soldier') this.ui.toast('Перетащи оружие к руке солдата — он будет стрелять по зомби', 2800);
     else if (e.isMelee && e.def.syringe) this.ui.toast('Перетащи шприц иглой на персонажа или брось в него', 2600);
     else if (e.isWeapon) this.ui.toast('Нажми на оружие — выстрел. Отпусти рядом с рукой — персонаж возьмёт его', 2800);
@@ -267,6 +280,7 @@ class Game {
         if (!ent) return;
         const res = ent.activate(body);
         if (res === 'drive') this.control(this.controlled === ent ? null : ent);
+        this.showInfo(ent);
         break;
       }
       case 'freeze':
@@ -330,14 +344,39 @@ class Game {
     const g = Math.max(4, this.worldDef.gravity);
     const joint = sim.world.createJoint(new pl.MouseJoint({ maxForce: m * g * 14 + 300, frequencyHz: 5, dampingRatio: 0.9 }, sim.ground, body, V(w.x, w.y)));
     body.setAwake(true);
-    this.drag = { joint, body, ent, rot: null, damp: body.getAngularDamping() };
+    this.drag = { joint, body, ent, rot: null, damp: body.getAngularDamping(), bullet: body.isBullet(), want: { x: w.x, y: w.y } };
     body.setAngularDamping(Math.max(3, this.drag.damp));
+    body.setBullet(true);
     sim.dragEnt = ent;
   }
 
   dragTo(w) {
     if (!this.drag) return;
-    this.drag.joint.setTarget(V(w.x, w.y));
+    this.drag.want = { x: w.x, y: w.y };
+    this.updateDragTarget();
+  }
+
+  // Цель перетаскивания не уходит под землю, за потолок и сквозь неподвижные предметы:
+  // иначе сильная «пружина» пальца продавливает тело сквозь них.
+  updateDragTarget() {
+    const d = this.drag, sim = this.sim;
+    const a = d.joint.getAnchorB();
+    const box = d.ent.isRagdoll ? bodyAABB(d.body) : d.ent.aabb();
+    let x = d.want.x, y = d.want.y;
+    y = Math.min(y, a.y - box.uy - 0.01);
+    if (sim.ceilingY !== null && sim.ceilingY !== undefined) y = Math.max(y, sim.ceilingY + (a.y - box.ly) + 0.01);
+    const dx = x - a.x, dy = y - a.y;
+    if (dx * dx + dy * dy > 1e-6) {
+      let hit = null;
+      sim.world.rayCast(V(a.x, a.y), V(x, y), (f, pt, n, frac) => {
+        const b = f.getBody();
+        if (f.isSensor() || !b.isStatic() || b === sim.ground || d.ent.bodies.includes(b)) return -1;
+        hit = { x: pt.x + n.x * 0.05, y: pt.y + n.y * 0.05 };
+        return frac;
+      });
+      if (hit) { x = hit.x; y = hit.y; }
+    }
+    d.joint.setTarget(V(x, y));
   }
 
   endDrag() {
@@ -347,6 +386,7 @@ class Game {
     this.sim.dragEnt = null;
     try { this.sim.world.destroyJoint(d.joint); } catch (e) { /* уже удалён */ }
     d.body.setAngularDamping(d.damp);
+    d.body.setBullet(d.bullet);
     const e = d.ent;
     if (e.isMelee && e.def.syringe && e.full > 0 && !e.removed) {
       // Отпустили шприц иглой на персонаже — укол.
@@ -373,6 +413,11 @@ class Game {
       }
       if (best && best.grab(e)) this.ui.toast(`${best.name} взял: ${e.name}`);
     }
+  }
+
+  // Подсказка от объекта после активации («Граната: взрыв через 3 с»).
+  showInfo(e) {
+    if (e && e.info) { this.ui.toast(e.info, 2200); e.info = null; }
   }
 
   control(v) {
@@ -419,6 +464,7 @@ class Game {
       case 'activate': {
         const res = e.activate(body);
         if (res === 'drive') this.control(e);
+        this.showInfo(e);
         break;
       }
       case 'freeze': {
@@ -481,6 +527,7 @@ class Game {
       requestAnimationFrame((t) => this.frame(t));
       return;
     }
+    if (this.drag) this.updateDragTarget();
     if (this.drag && this.drag.rot != null && !this.drag.body.isStatic()) {
       const b = this.drag.body;
       b.setAngularVelocity(clamp(wrapAngle(this.drag.rot - b.getAngle()) * 14, -25, 25));
@@ -556,6 +603,9 @@ function boot() {
     initAudio();
     sfx.ui();
     start.classList.add('hidden');
+    let seen = false;
+    try { seen = localStorage.getItem('kaboom.tip') === '1'; localStorage.setItem('kaboom.tip', '1'); } catch (e) { /* нет хранилища */ }
+    if (!seen) setTimeout(() => game.ui.toast('Коротко нажми на предмет — активировать (выстрел, таймер бомбы). Подержи палец — меню объекта', 4500), 700);
   };
 }
 

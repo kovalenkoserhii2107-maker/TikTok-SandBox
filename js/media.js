@@ -471,7 +471,6 @@ export class Director {
       if (e.removed || e.isDebris || e.isGore || e.permanentStatic) continue;
       if (!e.isRagdoll && !e.chassis && !e.isExplosive) continue;
       const p = (e.parts ? e.parts.chest.body : e.main).getPosition();
-      if (Math.abs(p.x) > 74) continue;
       lx = Math.min(lx, p.x); ux = Math.max(ux, p.x); ly = Math.min(ly, p.y); n++;
     }
     return n ? { x: (lx + ux) / 2, y: Math.min(-0.8, ly + 0.6), w: ux - lx + 4 } : null;

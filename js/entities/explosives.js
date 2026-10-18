@@ -34,7 +34,9 @@ export class Explosive extends Entity {
     this.def = EXPLOSIVES[id];
     this.name = this.def.name;
     this.timer = null;
+    this.fuseSet = this.def.fuse || (id === 'barrel' ? 3 : 5); // время таймера, меняется в меню
     this.armed = false;
+    this.disarmed = false;
     this.detonating = false;
     this.hp = this.def.hp ?? Infinity;
     this.spawnT = sim.time;
@@ -192,31 +194,64 @@ export class Explosive extends Entity {
     }
   }
 
+  // Короткое нажатие. Возвращает подсказку — что произошло.
   activate() {
     const id = this.expId;
     if (id === 'c4') {
       for (const e of this.sim.entities) if (e.isC4 && !e.removed) e.detonate(rand(0, 0.12));
       return true;
     }
-    if (id === 'bomb') { this.armed = !this.armed; sfx.click(this.main.getPosition()); return true; }
-    if (id === 'mine') { this.armed = true; return true; }
-    if (id === 'barrel' || id === 'molotov') { this.detonate(0); return true; }
-    if (this.timer === null) {
-      this.timer = this.def.fuse;
+    if (id === 'bomb') {
+      this.armed = !this.armed;
       sfx.click(this.main.getPosition());
-      if (id === 'grenade') {
-        const p = this.main.getPosition();
-        this.sim.effects.chunks(p.x, p.y - 0.08, 1, ['#7d848b'], 0.03, 3);
-      }
+      this.info = this.armed ? 'Авиабомба взведена: взорвётся от удара. Подними и брось!' : 'Авиабомба разряжена';
+      return true;
     }
+    if (id === 'mine') { this.setArmed(true); this.info = 'Мина взведена: взорвётся, если на неё наступить'; return true; }
+    if (id === 'barrel' || id === 'molotov') { this.detonate(0); return true; }
+    if (this.timer === null) this.startTimer();
     return true;
+  }
+
+  get hint() { return this.info; }
+
+  startTimer(t = this.fuseSet) {
+    if (this.detonating) return;
+    this.timer = t;
+    this.beepT = 0;
+    sfx.click(this.main.getPosition());
+    if (this.expId === 'grenade') {
+      const p = this.main.getPosition();
+      this.sim.effects.chunks(p.x, p.y - 0.08, 1, ['#7d848b'], 0.03, 3);
+    }
+    this.info = `${this.name}: взрыв через ${t} с`;
+  }
+
+  setArmed(v) {
+    this.armed = v;
+    this.disarmed = !v;
+    sfx.click(this.main.getPosition());
+  }
+
+  // Меню объекта (долгое нажатие): таймер, взвод, взрыв сейчас.
+  menu() {
+    const id = this.expId;
+    if (id === 'molotov') return [];
+    const items = [];
+    if (this.timer === null) items.push({ label: `Запустить таймер: ${this.fuseSet} с`, icon: '⏱️', fn: () => this.startTimer() });
+    else items.push({ label: 'Остановить таймер', icon: '⏹️', fn: () => { this.timer = null; sfx.click(this.main.getPosition()); } });
+    items.push({ seg: true, label: 'Время', options: [1, 3, 5, 10, 30], value: this.fuseSet, fmt: (v) => v + ' с', fn: (v) => { this.fuseSet = v; } });
+    if (id === 'bomb') items.push({ label: this.armed ? 'Разрядить (не взрываться от удара)' : 'Взвести: взрыв от удара', icon: '🎯', fn: () => { this.armed = !this.armed; sfx.click(this.main.getPosition()); } });
+    if (id === 'mine') items.push({ label: this.armed ? 'Разрядить' : 'Взвести', icon: '🎯', fn: () => this.setArmed(!this.armed) });
+    items.push({ label: id === 'c4' ? 'Взорвать все C4 (детонатор)' : 'Взорвать сейчас', icon: '💥', fn: () => (id === 'c4' ? this.activate() : this.detonate(0)) });
+    return items;
   }
 
   update(dt) {
     const id = this.expId;
     const b = this.main;
     if (!b) return;
-    if (id === 'mine' && !this.armed && this.sim.time - this.spawnT > 1.5) this.armed = true;
+    if (id === 'mine' && !this.armed && !this.disarmed && this.sim.time - this.spawnT > 1.5) this.armed = true;
     if (id === 'molotov' && Math.random() < dt * 14) {
       const w = b.getWorldPoint(V(0, -0.23));
       this.sim.effects.flame(w.x, w.y, 0.06);

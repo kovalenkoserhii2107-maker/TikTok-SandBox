@@ -414,7 +414,30 @@ export class UI {
     };
     if (e.isVehicle) add('activate', 'Сесть за руль', '🚗');
     else if (e.isRagdoll) { if (e.holding) add('activate', 'Атаковать', '💥'); }
-    else add('activate', 'Активировать', '⚡');
+    else if (!e.isExplosive || e.expId === 'molotov' || e.expId === 'barrel') add('activate', e.isWeapon ? 'Выстрел / удар' : 'Активировать', '⚡');
+    // Свои действия объекта (таймер взрывчатки, интервал таймера, автоогонь) — сразу наверху.
+    if (e.menu) {
+      for (const it of e.menu()) {
+        if (it.seg) {
+          const row = document.createElement('div');
+          row.className = 'cseg';
+          row.innerHTML = `<span>${it.label}</span>`;
+          for (const v of it.options) {
+            const b = document.createElement('button');
+            b.textContent = it.fmt ? it.fmt(v) : v;
+            if (v === it.value) b.className = 'on';
+            b.onclick = () => { it.fn(v); sfx.ui(); this.openCtx(body, sx, sy); };
+            row.appendChild(b);
+          }
+          m.appendChild(row);
+          continue;
+        }
+        const b = document.createElement('button');
+        b.innerHTML = `<i>${it.icon}</i>${it.label}`;
+        b.onclick = () => { it.fn(); sfx.ui(); this.closeCtx(); if (e.info) { this.toast(e.info); e.info = null; } };
+        m.appendChild(b);
+      }
+    }
     const frozen = e.bodies[0] && e.bodies[0].isStatic();
     if (!e.permanentStatic) add('freeze', frozen ? 'Разморозить' : 'Заморозить', '❄️');
     const burning = e.bodies.some((b) => g.sim.burning.has(b));
@@ -426,14 +449,6 @@ export class UI {
       if (!e.type.zombie && !e.type.noMuscles) add('team', `Команда: ${{ red: 'красные', blue: 'синие' }[e.team] || 'нет'}`, e.team === 'red' ? '🟥' : e.team === 'blue' ? '🟦' : '⬜');
     }
     if (e.spawnRef) add('clone', 'Копировать', '⧉');
-    if (e.menu) {
-      for (const m of e.menu()) {
-        const b = document.createElement('button');
-        b.innerHTML = `<i>${m.icon}</i>${m.label}`;
-        b.onclick = () => { m.fn(); sfx.ui(); this.closeCtx(); };
-        m && this.ctxInsert(b);
-      }
-    }
     if (g.sim.wires.some((w) => w.a === e || w.b === e)) add('unwire', 'Убрать провода', '✂️');
     add('delete', 'Удалить', '🗑️', 'danger');
     m.classList.remove('hidden');
@@ -445,7 +460,6 @@ export class UI {
 
   closeCtx() { $('#ctx').classList.add('hidden'); }
 
-  ctxInsert(b) { $('#ctx').appendChild(b); }
 
   openMenu() {
     this.renderSlots();

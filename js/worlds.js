@@ -83,6 +83,34 @@ function groundFront(r, color, line) {
   r.screen();
 }
 
+// Мир бесконечный по ширине: декорации генерируются на участке длиной period
+// и повторяются вокруг камеры. Для цикла for..of это обычный массив.
+let CAMX = 0;
+class Periodic {
+  constructor(list, period) {
+    this.list = list;
+    this.period = period;
+    this.cache = new Map();
+  }
+
+  copies(k) {
+    let c = this.cache.get(k);
+    if (!c) {
+      if (this.cache.size > 8) this.cache.clear();
+      const off = k * this.period;
+      c = this.list.map((it) => (typeof it === 'number' ? it + off : { ...it, x: it.x + off }));
+      this.cache.set(k, c);
+    }
+    return c;
+  }
+
+  *[Symbol.iterator]() {
+    const kc = Math.round(CAMX / this.period);
+    for (let k = kc - 1; k <= kc + 1; k++) yield* (k === 0 ? this.list : this.copies(k));
+  }
+}
+const per = (list, period) => new Periodic(list, period);
+
 // Генерация раскладки декораций (один раз на мир).
 const layouts = new Map();
 function layout(id, fn) {
@@ -124,7 +152,7 @@ function cityLayout(rnd) {
   for (let x = -122; x < 130; x += 16) if (rnd() < 0.7) trees.push({ x: x + rnd() * 3, s: 0.8 + rnd() * 0.5 });
   const clouds = [];
   for (let i = 0; i < 14; i++) clouds.push({ x: -1200 + rnd() * 2400, y: -90 - rnd() * 130, s: 0.6 + rnd() * 1.2 });
-  return { far, mid, near, lamps, trees, clouds };
+  return { far: per(far, 1400), mid: per(mid, 520), near: per(near, 260), lamps: per(lamps, 260), trees: per(trees, 260), clouds };
 }
 
 function drawCity(r, t, night) {
@@ -160,7 +188,7 @@ function drawCity(r, t, night) {
   }
   // Облака.
   for (const c of L.clouds) {
-    const x = ((c.x + t * 1.5 + 1200) % 2400) - 1200;
+    const x = r.cam.x + ((((c.x + t * 1.5 - r.cam.x) % 2400) + 3600) % 2400) - 1200;
     const [cx, cy] = r.P(x, c.y, 500);
     const k = r.k(500) * c.s;
     if (cx < -200 || cx > r.W + 200) continue;
@@ -301,7 +329,7 @@ function desertLayout(rnd) {
   cacti.sort((a, b) => b.z - a.z);
   for (let i = 0; i < 70; i++) rocks.push({ x: -150 + rnd() * 300, z: 1.5 + rnd() * 30, s: 0.2 + rnd() * 0.6 });
   for (let x = -600; x < 600; x += 30 + rnd() * 40) dunes.push({ x, w: 60 + rnd() * 80, h: 4 + rnd() * 7 });
-  return { mesas, cacti, rocks, dunes };
+  return { mesas: per(mesas, 1800), cacti: per(cacti, 300), rocks: per(rocks, 300), dunes: per(dunes, 1200) };
 }
 
 function drawDesert(r, t) {
@@ -379,7 +407,7 @@ function moonLayout(rnd) {
   for (let i = 0; i < 220; i++) stars.push({ x: rnd(), y: rnd(), b: rnd() });
   for (let i = 0; i < 120; i++) craters.push({ x: -200 + rnd() * 400, z: -2 + rnd() * 70, r: 0.5 + rnd() * 4 });
   for (let x = -900; x < 900; x += 30 + rnd() * 60) hills.push({ x, w: 60 + rnd() * 120, h: 6 + rnd() * 22 });
-  return { stars, craters, hills };
+  return { stars, craters: per(craters, 400), hills: per(hills, 1800) };
 }
 
 function drawMoon(r, t) {
@@ -540,7 +568,7 @@ function winterLayout(rnd) {
   trees.sort((a, b) => b.z - a.z);
   for (let x = -1200; x < 1200; x += 60 + rnd() * 140) mountains.push({ x, w: 120 + rnd() * 200, h: 40 + rnd() * 90 });
   for (let i = 0; i < 160; i++) flakes.push({ x: rnd(), y: rnd(), d: 0.3 + rnd() * 0.7, ph: rnd() * TAU });
-  return { trees, mountains, flakes };
+  return { trees: per(trees, 440), mountains: per(mountains, 2400), flakes };
 }
 
 function drawWinter(r, t) {
@@ -614,7 +642,7 @@ function baseLayout(rnd) {
   for (let x = -140; x < 140; x += 22 + rnd() * 10) barracks.push({ x, w: 12 + rnd() * 5, h: 3.5 + rnd() * 1.5 });
   for (let x = -120; x < 120; x += 9 + rnd() * 12) bags.push({ x, n: 3 + Math.floor(rnd() * 3) });
   for (let x = -150; x < 150; x += 3) posts.push(x);
-  return { hills, barracks, bags, posts };
+  return { hills: per(hills, 1800), barracks: per(barracks, 280), bags: per(bags, 240), posts: per(posts, 300) };
 }
 
 function drawBase(r, t) {
@@ -700,7 +728,7 @@ function roofLayout(rnd) {
   for (let x = -260; x < 260; x += 14 + rnd() * 16) mid.push({ x, w: 10 + rnd() * 14, top: -15 + rnd() * 45, c: ['#8f9fae', '#a5b2bd', '#7f8fa0', '#b8b0a4'][Math.floor(rnd() * 4)] });
   const units = [];
   for (let x = -60; x < 60; x += 11 + rnd() * 8) units.push({ x, kind: rnd() < 0.3 ? 'tower' : 'ac' });
-  return { far, mid, units };
+  return { far: per(far, 1800), mid: per(mid, 520), units: per(units, 120) };
 }
 
 function drawRoof(r, t) {
@@ -865,6 +893,14 @@ export const WORLDS = [
   { id: 'roof', name: 'Крыша небоскрёба', desc: 'Город далеко внизу', gravity: 9.8, drawBackground: drawRoof, dust: '#b0aca3', debris: ['#8e8b84', '#6f6c66'], thumb: ['#2f6db8', '#d8ecfb', '#8e8b84'], sun: { x: 0.7, y: 1, z: 0.45, k: 0.45 }, grade: '#ffeccc' },
   { id: 'station', name: 'Космостанция', desc: 'Невесомость, потолок', gravity: 0, ceiling: -13, drawBackground: drawStation, dust: '#c2c8d0', debris: ['#9aa3ad', '#6b7380'], thumb: ['#05070c', '#c8ced6', '#8e959e'], sun: { x: 0.05, y: 1, z: 0.1, k: 0.2 }, grade: '#cfe0ff' },
 ];
+
+// Перед отрисовкой запоминаем камеру — от неё зависит, какие копии декораций нужны.
+for (const w of WORLDS) {
+  for (const key of ['drawBackground', 'drawForeground', 'drawLights']) {
+    const fn = w[key];
+    if (fn) w[key] = (r, ...a) => { CAMX = r.cam.x; return fn(r, ...a); };
+  }
+}
 
 export const worldById = (id) => WORLDS.find((w) => w.id === id) || WORLDS[0];
 export { clamp };
