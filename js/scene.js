@@ -30,7 +30,8 @@ export function serialize(game) {
     const s = { cat: e.spawnRef.cat, id: e.spawnRef.id, f: e.spawnRef.f };
     if (e.isRagdoll) {
       s.f = e.facing;
-      s.id = e.typeId;
+      s.id = e.typeId === 'fighter' ? e.spawnRef.id : e.typeId;
+      s.team = e.team;
       s.parts = {};
       for (const p of e.partList) if (!p.gone) s.parts[p.name] = pose(p.body);
       s.severed = e.partList.filter((p) => !p.gone && p.name !== 'chest' && !p.joint).map((p) => p.name);
@@ -93,6 +94,7 @@ export function deserialize(game, data) {
       for (const name of s.severed || []) if (e.parts[name]) e.sever(e.parts[name]);
       if (s.headGone) e.explodeHead();
       if (s.blood !== undefined) e.blood = s.blood;
+      if (s.team) e.setTeam(s.team);
       if (s.alive === false) { e.alive = false; e.conscious = false; }
     } else {
       (s.b || []).forEach((t, i) => set(e.bodies[i], t));

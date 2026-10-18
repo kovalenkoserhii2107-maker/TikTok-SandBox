@@ -423,6 +423,7 @@ export class UI {
       add('heal', 'Вылечить', '❤️');
       if (e.alive && !e.type.immortal) add('kill', 'Убить', '💀');
       if (e.holding) add('drop', 'Бросить оружие', '✋');
+      if (!e.type.zombie && !e.type.noMuscles) add('team', `Команда: ${{ red: 'красные', blue: 'синие' }[e.team] || 'нет'}`, e.team === 'red' ? '🟥' : e.team === 'blue' ? '🟦' : '⬜');
     }
     if (e.spawnRef) add('clone', 'Копировать', '⧉');
     if (e.menu) {

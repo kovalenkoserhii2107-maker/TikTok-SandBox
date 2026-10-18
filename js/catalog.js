@@ -22,6 +22,8 @@ export const CATEGORIES = [
       { id: 'robot', name: 'Робот', desc: 'Стальной корпус, искры вместо крови, очень прочный. При гибели взрывается.', make: rd('robot') },
       { id: 'giant', name: 'Гигант', desc: 'В полтора раза выше, в 3 раза тяжелее и крепче.', make: rd('giant') },
       { id: 'skeleton', name: 'Скелет', desc: 'Лёгкий, кости отлетают от любого удара. Живёт, пока цел череп.', make: rd('skeleton') },
+      { id: 'fighterRed', name: 'Боец (красные)', desc: 'Дерётся руками и ногами с синими и зомби. Дай оружие — будет стрелять.', make: (s, x, y, f) => { const r = new Ragdoll(s, x, y, 'fighter', f); r.setTeam('red'); return r; } },
+      { id: 'fighterBlue', name: 'Боец (синие)', desc: 'Дерётся с красными и зомби. Команду можно поменять в меню объекта.', make: (s, x, y, f) => { const r = new Ragdoll(s, x, y, 'fighter', f); r.setTeam('blue'); return r; } },
       { id: 'dummy', name: 'Манекен', desc: 'Краш-тест манекен: бессмертный, без мышц, для экспериментов.', make: rd('dummy') },
     ],
   },

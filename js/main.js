@@ -414,6 +414,12 @@ class Game {
         for (const p of e.partList) p.hp = Math.min(p.hp, 0);
         break;
       case 'drop': e.drop(); break;
+      case 'team': {
+        const next = { null: 'red', red: 'blue', blue: null }[String(e.team)];
+        e.setTeam(next);
+        this.ui.toast(next ? `Команда: ${next === 'red' ? 'красные' : 'синие'}` : 'Без команды');
+        break;
+      }
       case 'clone': {
         if (!e.spawnRef) break;
         const a = e.aabb();
