@@ -50,7 +50,8 @@ export class Effects {
 
   add(p) {
     if (this.sim.silent) return;
-    if (this.ps.length > 2200) this.ps.splice(0, 200);
+    const cap = 900 + 1500 * Math.min(1.3, this.quality);
+    if (this.ps.length > cap) this.ps.splice(0, 200);
     p.z ??= rand(-0.25, 0.25);
     p.vz ??= 0;
     p.max = p.life;
@@ -314,6 +315,14 @@ export class Effects {
         ctx.beginPath();
         ctx.ellipse(cx, cy, rx, ry, 0, 0, TAU);
         ctx.fill();
+        // Влажный блеск луж.
+        if (r.q.wet && rx > 4) {
+          ctx.globalAlpha = 0.22 * d.alpha;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.ellipse(cx - rx * 0.25, cy - ry * 0.3, rx * 0.35, ry * 0.22, 0, 0, TAU);
+          ctx.fill();
+        }
       }
     }
     ctx.globalAlpha = 1;
@@ -407,6 +416,7 @@ export class Effects {
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+    if (r.q.bloom) this.bloom(r);
     for (const g of this.rings) {
       const [cx, cy] = r.P(g.x, g.y, 0);
       const rr = g.r * r.k(0);
@@ -418,6 +428,33 @@ export class Effects {
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
+  }
+
+  // Свечение (bloom): яркие частицы в низком разрешении, растянутые и сложенные.
+  bloom(r) {
+    let any = false;
+    for (const p of this.ps) if (p.type === 'fire' || p.type === 'flash') { any = true; break; }
+    if (!any) return;
+    const o = r.offscreen('bloom', 0.25);
+    const c = o.cv.getContext('2d');
+    const sc = o.scale;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, o.cv.width, o.cv.height);
+    c.globalCompositeOperation = 'lighter';
+    for (const p of this.ps) {
+      if (p.type !== 'fire' && p.type !== 'flash') continue;
+      const [sx, sy] = r.P(p.x, p.y, p.z);
+      const s = Math.max(2, p.size * r.k(p.z)) * 2.6;
+      const lt = p.life / p.max;
+      c.globalAlpha = Math.min(1, lt * 1.5) * (p.type === 'flash' ? 0.6 : 0.22);
+      c.drawImage(softSprite(p.type === 'flash' ? '#fff0c8' : '#ff8a30', 0), (sx - s) * sc, (sy - s) * sc, s * 2 * sc, s * 2 * sc);
+    }
+    const ctx = r.ctx;
+    r.screen();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(o.cv, 0, 0, r.W, r.H);
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   // Динамический свет (вспышки) рисуется поверх освещения сцены.

@@ -1,8 +1,18 @@
 // 2.5D-рендер: физика плоская, но каждый объект — объёмная призма
 // в настоящей перспективной проекции. Фон и земля уходят вглубь сцены.
 import { clamp, convexHull, shade, TAU } from './util.js';
+import { texPattern, TEX, MAT_TEX } from './textures.js';
 
 const DCAM = 24; // расстояние камеры до плоскости физики (м)
+
+// Уровни графики.
+export const QUALITY = {
+  low: { id: 'low', name: 'Низкое', dpr: 1, particles: 0.4, shadows: 'blob', faces: false, tex: false, cyl: false, vignette: false, bloom: false, grade: false },
+  medium: { id: 'medium', name: 'Среднее', dpr: 1.5, particles: 0.7, shadows: 'blob', faces: true, tex: false, cyl: true, vignette: false, bloom: false, grade: false },
+  high: { id: 'high', name: 'Высокое', dpr: 2, particles: 1, shadows: 'cast', faces: true, tex: true, cyl: true, vignette: true, bloom: false, grade: false },
+  ultra: { id: 'ultra', name: 'Ультра', dpr: 2.5, particles: 1.3, shadows: 'soft', faces: true, tex: true, cyl: true, vignette: true, bloom: true, grade: true, spec: true, wet: true },
+};
+export const QUALITY_ORDER = ['low', 'medium', 'high', 'ultra'];
 
 export class Renderer {
   constructor(canvas, opts = {}) {
@@ -20,6 +30,36 @@ export class Renderer {
     this.items = [];
     this.gradCache = new Map();
     this.showFrozen = true;
+    this.q = QUALITY.high;
+    this.off = {};
+  }
+
+  setQuality(id) {
+    this.q = QUALITY[id] || QUALITY.high;
+    this.maxDpr = this.q.dpr;
+  }
+
+  // Вспомогательный холст пониженного разрешения (тени, свечение).
+  offscreen(name, scale) {
+    let o = this.off[name];
+    const w = Math.max(1, Math.round(this.W * scale)), h = Math.max(1, Math.round(this.H * scale));
+    if (!o) { o = this.off[name] = { cv: document.createElement('canvas'), scale }; }
+    if (o.cv.width !== w || o.cv.height !== h) { o.cv.width = w; o.cv.height = h; }
+    o.scale = scale;
+    return o;
+  }
+
+  texOf(v, e) {
+    if (v._tex === undefined) {
+      let kind = v.tex;
+      if (kind === undefined) {
+        const f = v.body && v.body.getFixtureList();
+        const mat = f && f.getUserData() && f.getUserData().mat;
+        kind = MAT_TEX[mat] || null;
+      }
+      v._tex = kind;
+    }
+    return v._tex;
   }
 
   resize(w, h) {
@@ -31,6 +71,8 @@ export class Renderer {
     this.vp.x = w / 2;
     this.vp.y = h * this.vpFrac;
     this.gradCache.clear();
+    this._cyl = null;
+    this._vigKey = null;
   }
 
   // Масштаб (px/м) на глубине z.
@@ -132,6 +174,19 @@ export class Renderer {
     return g;
   }
 
+  // Цилиндрическое затенение (конечности, стволы): тёмные края, блик.
+  cylGrad() {
+    if (!this._cyl) {
+      const g = this.ctx.createLinearGradient(-1, 0, 1, 0);
+      g.addColorStop(0, 'rgba(0,0,0,0.34)');
+      g.addColorStop(0.28, 'rgba(255,255,255,0.12)');
+      g.addColorStop(0.5, 'rgba(255,255,255,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.4)');
+      this._cyl = g;
+    }
+    return this._cyl;
+  }
+
   // ---------- Сцена ----------
   drawScene(sim, worldDef, opts = {}) {
     const ctx = this.ctx;
@@ -140,7 +195,8 @@ export class Renderer {
     ctx.globalCompositeOperation = 'source-over';
     worldDef.drawBackground(this, sim.time, sim);
     sim.effects.drawDecals(this);
-    this.drawShadows(sim);
+    if (this.q.shadows === 'blob') this.drawShadows(sim);
+    else this.drawCastShadows(sim, worldDef);
     this.collect(sim);
     this.drawItems();
     for (const l of sim.links) if (l.draw && !l.dead) l.draw(this, l);
@@ -174,7 +230,103 @@ export class Renderer {
       ctx.fillRect(0, 0, this.W, this.H);
       ctx.globalAlpha = 1;
     }
+    this.post(worldDef);
     if (opts.overlay) opts.overlay(this);
+  }
+
+  // Виньетка и цветокоррекция.
+  post(worldDef) {
+    const q = this.q, ctx = this.ctx;
+    if (!q.vignette && !q.grade) return;
+    this.screen();
+    if (q.grade && worldDef.grade) {
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = worldDef.grade;
+      ctx.fillRect(0, 0, this.W, this.H);
+      ctx.globalAlpha = 1;
+    }
+    if (q.vignette) {
+      const key = this.W + 'x' + this.H;
+      if (this._vigKey !== key) {
+        const g = ctx.createRadialGradient(this.W / 2, this.H / 2, Math.min(this.W, this.H) * 0.45, this.W / 2, this.H / 2, Math.hypot(this.W, this.H) * 0.62);
+        g.addColorStop(0, 'rgba(0,0,0,0)');
+        g.addColorStop(1, 'rgba(0,0,0,0.38)');
+        this._vig = g;
+        this._vigKey = key;
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = this._vig;
+      ctx.fillRect(0, 0, this.W, this.H);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Тени от солнца: силуэты объектов проецируются на землю по направлению света.
+  drawCastShadows(sim, worldDef) {
+    const sun = worldDef.sun || { x: 0.5, y: 1, z: 0.35, k: 0.42 };
+    const sc = this.q.shadows === 'soft' ? 0.25 : 0.5;
+    const o = this.offscreen('shadow', sc);
+    const c = o.cv.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    c.fillStyle = '#ffffff';
+    c.fillRect(0, 0, o.cv.width, o.cv.height);
+    c.setTransform(sc, 0, 0, sc, 0, 0);
+    c.globalCompositeOperation = 'darken';
+    const lx = sun.x / sun.y, lz = sun.z / sun.y;
+    const pts = this._spts || (this._spts = []);
+    const cx = this.cam.x + this.shakeX, cy = this.cam.y + this.shakeY;
+    const vx = this.vp.x, vy = this.vp.y;
+    let drawn = 0;
+    for (const e of sim.entities) {
+      if (e.noShadow || e.removed) continue;
+      for (const v of e.visuals) {
+        if (v.custom || v.hidden || v.noCast || !v.outline) continue;
+        const b = v.body;
+        const p = b.getPosition();
+        const a = b.getAngle();
+        const co = Math.cos(a), si = Math.sin(a);
+        const out = v.outline;
+        const n = out.length;
+        const two = v.t > 0.25;
+        pts.length = 0;
+        let minH = Infinity;
+        for (let layer = 0; layer < (two ? 2 : 1); layer++) {
+          const zf = two ? v.z + (layer ? v.t / 2 : -v.t / 2) : v.z;
+          for (let i = 0; i < n; i++) {
+            const x = p.x + out[i][0] * co - out[i][1] * si;
+            const y = p.y + out[i][0] * si + out[i][1] * co;
+            const h = Math.max(0, -y);
+            if (h < minH) minH = h;
+            const gx = x + h * lx, gz = zf + h * lz;
+            const s = this.cam.s * DCAM / (DCAM + gz);
+            pts.push(vx + (gx - cx) * s, vy + (0 - cy) * s);
+          }
+        }
+        const dark = sun.k * clamp(1 - minH / 12, 0, 1);
+        if (dark < 0.02) continue;
+        let minx = Infinity, maxx = -Infinity;
+        for (let i = 0; i < pts.length; i += 2) { if (pts[i] < minx) minx = pts[i]; if (pts[i] > maxx) maxx = pts[i]; }
+        if (maxx < -20 || minx > this.W + 20) continue;
+        const hull = convexHull(pts);
+        c.beginPath();
+        c.moveTo(pts[hull[0] * 2], pts[hull[0] * 2 + 1]);
+        for (let i = 1; i < hull.length; i++) c.lineTo(pts[hull[i] * 2], pts[hull[i] * 2 + 1]);
+        c.closePath();
+        c.fillStyle = `rgb(${Math.round(255 * (1 - dark))},${Math.round(255 * (1 - dark * 0.94))},${Math.round(255 * (1 - dark * 0.78))})`;
+        c.fill();
+        drawn++;
+      }
+    }
+    if (!drawn) return;
+    const ctx = this.ctx;
+    this.screen();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(o.cv, 0, 0, this.W, this.H);
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   drawShadows(sim) {
@@ -277,7 +429,7 @@ export class Renderer {
     ctx.closePath();
     ctx.fillStyle = v.side || shade(col, bandPx < 5 ? -0.42 : -0.55);
     ctx.fill();
-    if (!v.side && bandPx >= 5) {
+    if (!v.side && bandPx >= 5 && this.q.faces) {
       // Видимые боковые грани с освещением по нормали: верх светлее, низ темнее.
       const camX = this.cam.x, camY = this.cam.y;
       let area = 0;
@@ -353,6 +505,34 @@ export class Renderer {
     ctx.fillStyle = v.noGrad ? col : v.sphere ? this.sgrad(col) : this.grad(col);
     ctx.globalAlpha = v.alpha || 1;
     ctx.fill();
+    const q = this.q;
+    if (q.tex && !v.noTex) {
+      const kind = this.texOf(v, e);
+      if (kind) {
+        ctx.setTransform(d * s * c, d * s * sn, -d * s * sn, d * s * c, d * sx, d * sy);
+        ctx.fillStyle = texPattern(ctx, kind);
+        ctx.globalAlpha = (TEX[kind] || TEX.paint).a * (v.alpha || 1);
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+    if (q.cyl && v.cyl) {
+      ctx.setTransform(d * s * c * v.cyl, d * s * sn * v.cyl, -d * s * sn, d * s * c, d * sx, d * sy);
+      ctx.fillStyle = this.cylGrad();
+      ctx.globalAlpha = v.alpha || 1;
+      ctx.fill();
+    }
+    if (q.spec && v.sphere && v.rad * s > 6) {
+      ctx.setTransform(d * s * v.rad, 0, 0, d * s * v.rad, d * sx, d * sy);
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.beginPath();
+      ctx.ellipse(-0.38, -0.45, 0.22, 0.13, -0.5, 0, TAU);
+      ctx.fill();
+      ctx.setTransform(d * s * c, d * s * sn, -d * s * sn, d * s * c, d * sx, d * sy);
+      ctx.beginPath();
+      v.path(ctx);
+    }
     ctx.globalAlpha = 1;
     this.screen();
     ctx.strokeStyle = v.stroke || shade(col, -0.55);

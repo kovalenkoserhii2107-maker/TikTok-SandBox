@@ -5,6 +5,7 @@ import { R, rand, gauss, TAU, polyArea, clamp, len, mirrorPts } from '../util.js
 import { sfx } from '../audio.js';
 
 const DARK = '#2b2e33', BLACK = '#1b1c1f', WOOD = '#8a4b22', STEEL = '#8e959e';
+const WOODS = new Set([WOOD, '#6e3b1b', '#7b4423', '#6b3f1f', '#5a2e14', '#2a1d3a', '#9a6a3a', '#a87a48', '#d2a86a']);
 
 // Геометрия: x — вперёд по стволу, y — вниз. phys: участвует в физике.
 export const GUNS = {
@@ -175,7 +176,8 @@ class Weapon extends Entity {
           ud: s.sharp ? { sharp: true } : {},
         });
       }
-      const v = visPoly(b, pts, { z: 0, t: d.t || 0.055, color: s.color, warhead: s.warhead, alpha: s.alpha });
+      const wood = s.mat === 'wood' || WOODS.has(s.color);
+      const v = visPoly(b, pts, { z: 0, t: d.t || 0.055, color: s.color, warhead: s.warhead, alpha: s.alpha, tex: s.alpha ? null : wood ? 'wood' : 'metal' });
       this.visuals.push(v);
     }
     if (this.visuals[0] && this.drawDetail) {

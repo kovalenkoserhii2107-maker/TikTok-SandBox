@@ -1,5 +1,6 @@
 // Миры: фон в настоящей перспективе (параллакс получается сам), земля, свет.
 import { seeded, shade, rgba, TAU, clamp, mix } from './util.js';
+import { texPattern, TEX } from './textures.js';
 
 const NEAR_Z = -3;
 
@@ -30,6 +31,18 @@ function groundBand(r, z0, z1, color) {
   r.groundQuad(0, z0, z1, xa, xb);
   r.ctx.fillStyle = color;
   r.ctx.fill();
+  // Текстура грунта на высоком качестве (только ближние полосы).
+  if (r.q.tex && z0 < 30) {
+    const ctx = r.ctx;
+    r.face(Math.max(0, z0));
+    ctx.fillStyle = texPattern(ctx, 'ground');
+    ctx.globalAlpha = TEX.ground.a;
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    r.screen();
+  }
 }
 
 // Линии на земле вдоль X (разметка, швы плитки).
@@ -595,12 +608,12 @@ function winterSnow(r, t) {
 }
 
 export const WORLDS = [
-  { id: 'city', name: 'Город', desc: 'Улица, дома, фонари', gravity: 9.8, drawBackground: (r, t) => drawCity(r, t, false), dust: '#a8a49c', debris: ['#5d5f63', '#7a7c80'], thumb: ['#3f86d8', '#cfe9ff', '#46494f'] },
-  { id: 'night', name: 'Ночной город', desc: 'Огни окон и фонарей', gravity: 9.8, drawBackground: (r, t) => drawCity(r, t, true), ambient: '#5a6aa0', drawLights: cityLights, dust: '#77736c', debris: ['#3a3b40', '#55565c'], thumb: ['#060b1a', '#3a3f6e', '#24252a'] },
-  { id: 'desert', name: 'Пустыня', desc: 'Закат, кактусы, дюны', gravity: 9.8, drawBackground: drawDesert, ambient: '#ffe6cc', dust: '#d9b98a', debris: ['#c99a62', '#a67a48'], thumb: ['#c9667a', '#ffd38a', '#e6bb83'] },
-  { id: 'moon', name: 'Луна', desc: 'Гравитация 1.6 м/с², огонь быстро гаснет', gravity: 1.62, noAir: true, drawBackground: drawMoon, dust: '#a3a5aa', debris: ['#7c7e83', '#5e6065'], thumb: ['#000000', '#0d0f16', '#8f9196'] },
-  { id: 'lab', name: 'Полигон', desc: 'Испытательная площадка', gravity: 9.8, drawBackground: drawLab, dust: '#c2c6cc', debris: ['#9aa0a8', '#c7ccd2'], thumb: ['#2b2f36', '#d6dbe1', '#c7ccd2'] },
-  { id: 'winter', name: 'Зимний лес', desc: 'Снег и ели', gravity: 9.8, drawBackground: drawWinter, drawForeground: winterSnow, ambient: '#e4ecf8', dust: '#eef3f9', debris: ['#ffffff', '#cfdbe9'], thumb: ['#4b6390', '#dbe6f3', '#eef3f9'] },
+  { id: 'city', name: 'Город', desc: 'Улица, дома, фонари', gravity: 9.8, drawBackground: (r, t) => drawCity(r, t, false), dust: '#a8a49c', debris: ['#5d5f63', '#7a7c80'], thumb: ['#3f86d8', '#cfe9ff', '#46494f'], sun: { x: -0.55, y: 1, z: 0.45, k: 0.45 }, grade: '#ffe9c9' },
+  { id: 'night', name: 'Ночной город', desc: 'Огни окон и фонарей', gravity: 9.8, drawBackground: (r, t) => drawCity(r, t, true), ambient: '#5a6aa0', drawLights: cityLights, dust: '#77736c', debris: ['#3a3b40', '#55565c'], thumb: ['#060b1a', '#3a3f6e', '#24252a'], sun: { x: -0.25, y: 1, z: 0.3, k: 0.22 }, grade: '#3b4a8a' },
+  { id: 'desert', name: 'Пустыня', desc: 'Закат, кактусы, дюны', gravity: 9.8, drawBackground: drawDesert, ambient: '#ffe6cc', dust: '#d9b98a', debris: ['#c99a62', '#a67a48'], thumb: ['#c9667a', '#ffd38a', '#e6bb83'], sun: { x: 1.7, y: 1, z: 0.6, k: 0.5 }, grade: '#ff9a5a' },
+  { id: 'moon', name: 'Луна', desc: 'Гравитация 1.6 м/с², огонь быстро гаснет', gravity: 1.62, noAir: true, drawBackground: drawMoon, dust: '#a3a5aa', debris: ['#7c7e83', '#5e6065'], thumb: ['#000000', '#0d0f16', '#8f9196'], sun: { x: 0.8, y: 1, z: 0.4, k: 0.65 }, grade: '#9fb0c8' },
+  { id: 'lab', name: 'Полигон', desc: 'Испытательная площадка', gravity: 9.8, drawBackground: drawLab, dust: '#c2c6cc', debris: ['#9aa0a8', '#c7ccd2'], thumb: ['#2b2f36', '#d6dbe1', '#c7ccd2'], sun: { x: 0.12, y: 1, z: 0.18, k: 0.35 }, grade: '#dfe8f2' },
+  { id: 'winter', name: 'Зимний лес', desc: 'Снег и ели', gravity: 9.8, drawBackground: drawWinter, drawForeground: winterSnow, ambient: '#e4ecf8', dust: '#eef3f9', debris: ['#ffffff', '#cfdbe9'], thumb: ['#4b6390', '#dbe6f3', '#eef3f9'], sun: { x: 0.6, y: 1, z: 0.5, k: 0.28 }, grade: '#9db8e6' },
 ];
 
 export const worldById = (id) => WORLDS.find((w) => w.id === id) || WORLDS[0];

@@ -261,6 +261,25 @@ body:has(.drive:not(.hidden)) .tools,
 body:has(.drive:not(.hidden)) .fab,
 body:has(.drive:not(.hidden)) .placebar { display: none; }
 
+/* Выбор графики и FPS */
+.opt.col { flex-direction: column; align-items: stretch; gap: 8px; }
+.seg { display: flex; gap: 4px; background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 4px; }
+.seg button { flex: 1; padding: 8px 2px; border-radius: 9px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.seg button.on { background: var(--accent); color: #fff; }
+.opt .hint { color: var(--muted); font-size: 12px; }
+.fps {
+  position: absolute;
+  top: calc(62px + var(--sat));
+  left: calc(10px + var(--sal));
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  font: 700 11px ui-monospace, monospace;
+  color: #7dff9a;
+  pointer-events: none;
+}
+.fps.bad { color: #ff8a7a; }
+
 /* Контекстное меню объекта */
 .ctxmenu {
   position: absolute;

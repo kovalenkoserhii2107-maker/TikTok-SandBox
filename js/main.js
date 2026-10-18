@@ -1,6 +1,6 @@
 // Точка входа: игровой цикл, камера, инструменты, спавн.
 import { Sim, pl, V } from './sim.js';
-import { Renderer } from './render.js';
+import { Renderer, QUALITY, QUALITY_ORDER } from './render.js';
 import { WORLDS, worldById } from './worlds.js';
 import { UI } from './ui.js';
 import { initPWA } from './pwa.js';
@@ -48,7 +48,7 @@ class Game {
   constructor() {
     this.canvas = document.getElementById('game');
     this.r = new Renderer(this.canvas);
-    this.settings = { sound: true, blood: true, quality: true, follow: true, world: 'city' };
+    this.settings = { sound: true, blood: true, gfx: 'auto', fps: false, follow: true, world: 'city' };
     try { Object.assign(this.settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* нет хранилища */ }
     this.worldDef = worldById(this.settings.world);
     this.sim = this.makeSim();
@@ -63,6 +63,10 @@ class Game {
     this.pending = null;
     this.mouse = null;
     this.history = [];
+    // Стартовый уровень для «Авто» — по мощности устройства.
+    const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3;
+    this.autoLevel = weak ? 'medium' : 'high';
+    this.perf = { acc: 0, n: 0, t: 0, good: 0, fps: 60 };
     setSoundEnabled(this.settings.sound);
     this.applyQuality();
     window.addEventListener('resize', () => this.resize());
@@ -92,10 +96,37 @@ class Game {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch (e) { /* нет хранилища */ }
   }
 
+  get gfxLevel() { return this.settings.gfx === 'auto' ? this.autoLevel : this.settings.gfx; }
+
   applyQuality() {
-    this.r.maxDpr = this.settings.quality ? 2 : 1.25;
-    if (this.sim) this.sim.effects.quality = this.settings.quality ? 1 : 0.5;
+    this.r.setQuality(this.gfxLevel);
+    if (this.sim) this.sim.effects.quality = this.r.q.particles;
     this.resize();
+  }
+
+  // Замер FPS и автоподстройка качества.
+  trackPerf(dt) {
+    const p = this.perf;
+    p.acc += dt; p.n++; p.t += dt;
+    if (p.t < 2.5) return;
+    const avg = p.acc / p.n;
+    p.fps = Math.round(1 / Math.max(avg, 0.001));
+    p.acc = 0; p.n = 0; p.t = 0;
+    if (this.settings.fps) this.ui.showFps(p.fps, this.r.q.name);
+    if (this.settings.gfx !== 'auto' || document.hidden) return;
+    const i = QUALITY_ORDER.indexOf(this.autoLevel);
+    if (avg > 1 / 38 && i > 0) {
+      this.autoLevel = QUALITY_ORDER[i - 1];
+      p.good = 0;
+      this.applyQuality();
+      this.ui.toast(`Графика: ${QUALITY[this.autoLevel].name} (авто)`);
+    } else if (avg < 1 / 57) {
+      if (++p.good >= 4 && i < 2) {
+        p.good = 0;
+        this.autoLevel = QUALITY_ORDER[i + 1];
+        this.applyQuality();
+      }
+    } else p.good = 0;
   }
 
   resize() {
@@ -418,8 +449,10 @@ class Game {
 
   // ---------- Цикл ----------
   frame(ts) {
-    const dt = Math.min(0.05, Math.max(0, (ts - this.last) / 1000));
+    const rawDt = Math.max(0, (ts - this.last) / 1000);
+    const dt = Math.min(0.05, rawDt);
     this.last = ts;
+    if (rawDt < 0.5) this.trackPerf(rawDt);
     const sim = this.sim;
     const r = this.r;
     if (this.drag && this.drag.rot != null && !this.drag.body.isStatic()) {

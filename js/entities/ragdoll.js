@@ -155,7 +155,8 @@ export class Ragdoll extends Entity {
     const thin = T.skeleton ? 0.6 : 1;
     const zSide = p.side === 'B' ? 0.1 * k : p.side === 'F' ? -0.1 * k : 0;
     let v;
-    const common = { z: zSide + (d.z || 0), t: (d.t || 0.14) * k, role: d.role, side: p.side, part: p, clip: false };
+    const tex = T.robot ? 'metal' : T.skeleton ? null : T.id === 'dummy' ? 'paint' : { shirt: 'fabric', pants: 'fabric', skin: 'skin', shoes: 'rubber' }[d.role];
+    const common = { z: zSide + (d.z || 0), t: (d.t || 0.14) * k, role: d.role, side: p.side, part: p, clip: false, tex };
     if (d.shape === 'circle') {
       v = visCircle(p.body, d.r * k, { ...common, sphere: true, detail: (ctx) => this.drawHead(ctx, p) });
     } else if (p.name.startsWith('foot')) {

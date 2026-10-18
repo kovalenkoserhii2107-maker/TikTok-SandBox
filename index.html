@@ -65,6 +65,7 @@
     </div>
 
     <div id="toast"></div>
+    <div id="fps" class="fps hidden"></div>
     <div id="ctx" class="ctxmenu hidden"></div>
   </div>
 
@@ -88,7 +89,13 @@
       <h3>Настройки</h3>
       <label class="opt"><span>Звук</span><input type="checkbox" id="optSound"><i></i></label>
       <label class="opt"><span>Кровь</span><input type="checkbox" id="optBlood"><i></i></label>
-      <label class="opt"><span>Высокое качество</span><input type="checkbox" id="optQuality"><i></i></label>
+      <div class="opt col"><span>Графика</span>
+        <div class="seg" id="optGfx">
+          <button data-q="auto">Авто</button><button data-q="low">Низкая</button><button data-q="medium">Средняя</button><button data-q="high">Высокая</button><button data-q="ultra">Ультра</button>
+        </div>
+        <small id="gfxHint" class="hint"></small>
+      </div>
+      <label class="opt"><span>Показывать FPS</span><input type="checkbox" id="optFps"><i></i></label>
       <label class="opt"><span>Камера следует за техникой</span><input type="checkbox" id="optFollow"><i></i></label>
       <div class="mbtns">
         <button id="btnInstall" class="wide accent">Установить на телефон</button>

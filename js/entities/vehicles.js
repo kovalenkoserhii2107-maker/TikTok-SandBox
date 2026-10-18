@@ -73,7 +73,7 @@ export class Vehicle extends Entity {
   chassisPart(b, pts, color, t, o = {}) {
     const p = mirrorPts(pts, this.f, 1);
     if (!o.vis) this.fix(b, polyShape(p), { density: o.density, friction: 0.6, mat: o.mat || 'metal', restitution: 0.05 });
-    const v = visPoly(b, p, { z: o.z || 0, t, color, ...o.v });
+    const v = visPoly(b, p, { z: o.z || 0, t, color, tex: color === '#2d3035' || color === '#26282c' ? 'metal' : color === '#7a5230' ? 'wood' : 'paint', ...o.v });
     if (o.detail) {
       const f = this.f;
       v.detail = (ctx) => { ctx.save(); ctx.scale(f, 1); o.detail(ctx); ctx.restore(); };

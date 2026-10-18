@@ -137,7 +137,18 @@ export class UI {
     const st = g.settings;
     this.bindToggle('#optSound', st.sound, (v) => { st.sound = v; setSoundEnabled(v); });
     this.bindToggle('#optBlood', st.blood, (v) => { st.blood = v; g.sim.effects.blood = v; });
-    this.bindToggle('#optQuality', st.quality, (v) => { st.quality = v; g.applyQuality(); });
+    this.bindToggle('#optFps', st.fps, (v) => { st.fps = v; $('#fps').classList.toggle('hidden', !v); });
+    $('#fps').classList.toggle('hidden', !st.fps);
+    for (const b of document.querySelectorAll('#optGfx button')) {
+      b.onclick = () => {
+        st.gfx = b.dataset.q;
+        g.saveSettings();
+        g.applyQuality();
+        this.markGfx();
+        sfx.ui();
+      };
+    }
+    this.markGfx();
     this.bindToggle('#optFollow', st.follow, (v) => { st.follow = v; });
     $('#btnInstall').onclick = () => { this.closeMenu(); showInstall(true); };
     $('#btnFull').onclick = () => {
@@ -184,6 +195,25 @@ export class UI {
     const el = $(sel);
     el.checked = val;
     el.onchange = () => { fn(el.checked); this.game.saveSettings(); };
+  }
+
+  markGfx() {
+    const st = this.game.settings;
+    for (const b of document.querySelectorAll('#optGfx button')) b.classList.toggle('on', b.dataset.q === st.gfx);
+    const hints = {
+      auto: `Сейчас: ${this.game.r.q.name}. Подстраивается под скорость телефона.`,
+      low: 'Для слабых телефонов: без теней и текстур.',
+      medium: 'Объёмные грани, простые тени.',
+      high: 'Тени от солнца, текстуры материалов.',
+      ultra: 'Мягкие тени, свечение огня, блики, цветокоррекция. Нужен мощный телефон.',
+    };
+    $('#gfxHint').textContent = hints[st.gfx] || '';
+  }
+
+  showFps(fps, q) {
+    const el = $('#fps');
+    el.textContent = `${fps} FPS · ${q}`;
+    el.classList.toggle('bad', fps < 35);
   }
 
   markWorld() {
@@ -378,6 +408,7 @@ export class UI {
 
   openMenu() {
     this.renderSlots();
+    this.markGfx();
     $('#menu').classList.remove('hidden');
     $('#btnInstall').classList.toggle('hidden', !canInstall());
     sfx.ui();
