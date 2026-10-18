@@ -149,6 +149,9 @@ export const sfx = {
       sniper: { v: 1.0, f: 4200, d: 0.7, b: 80 },
       minigun: { v: 0.45, f: 3000, d: 0.12, b: 160 },
       cannon: { v: 1.0, f: 900, d: 1.2, b: 50 },
+      railgun: { v: 1.0, f: 5800, d: 0.85, b: 65 },
+      sawnoff: { v: 1.15, f: 1200, d: 0.6, b: 75 },
+      crossbow: { v: 0.5, f: 1800, d: 0.15, b: 240 },
     }[kind] || { v: 0.6, f: 2500, d: 0.25, b: 130 };
     noise({ dur: k.d, vol: k.v, freq: k.f, freqEnd: 300, pos });
     tone({ freq: k.b, freqEnd: 40, dur: k.d * 0.8, vol: k.v * 0.7, type: 'triangle', pos });
@@ -271,6 +274,40 @@ export const sfx = {
     if (!ready()) return;
     noise({ dur: 0.25, vol: 0.25, type: 'highpass', freq: 2500, pos });
     tone({ freq: 700, freqEnd: 1100, dur: 0.18, vol: 0.06, type: 'sine', pos });
+  },
+  railgun(pos) {
+    if (!ready()) return;
+    tone({ freq: 120, freqEnd: 2800, dur: 0.14, vol: 0.5, type: 'sawtooth', pos });
+    noise({ dur: 0.75, vol: 0.95, freq: 5200, freqEnd: 150, pos });
+    tone({ freq: 70, freqEnd: 30, dur: 0.6, vol: 0.85, type: 'triangle', pos });
+  },
+  tesla(pos) {
+    if (!ready() || !throttle('tesla', 60)) return;
+    noise({ dur: 0.22, vol: 0.6, type: 'bandpass', freq: 4500, q: 3.5, pos });
+    tone({ freq: 320, freqEnd: 90, dur: 0.2, vol: 0.35, type: 'sawtooth', pos });
+  },
+  chainsaw(pos) {
+    if (!ready() || !throttle('chainsaw', 70)) return;
+    noise({ dur: 0.14, vol: 0.45, type: 'bandpass', freq: 950, q: 2.2, pos });
+    tone({ freq: 90, freqEnd: 115, dur: 0.12, vol: 0.28, type: 'sawtooth', pos });
+  },
+  acidSizzle(pos) {
+    if (!ready() || !throttle('acid', 70)) return;
+    noise({ dur: 0.28, vol: 0.35, type: 'highpass', freq: 3800, pos });
+    tone({ freq: 600, freqEnd: 950, dur: 0.15, vol: 0.08, type: 'sine', pos });
+  },
+  blackHole(pos) {
+    if (!ready() || !throttle('blackHole', 120)) return;
+    tone({ freq: 45, freqEnd: 180, dur: 0.9, vol: 0.55, type: 'sine', pos });
+    noise({ dur: 1.1, vol: 0.45, type: 'lowpass', freq: 320, freqEnd: 800, pos });
+  },
+  fan(pos) {
+    if (!ready() || !throttle('fan', 100)) return;
+    noise({ dur: 0.25, vol: 0.28, type: 'bandpass', freq: 420, q: 1.2, pos });
+  },
+  springBounce(pos) {
+    if (!ready()) return;
+    tone({ freq: 140, freqEnd: 480, dur: 0.22, vol: 0.5, type: 'sine', pos });
   },
   ui() {
     if (!ready()) return;

@@ -21,6 +21,10 @@ export const CHAR_TYPES = {
   skeleton: { id: 'skeleton', name: 'Скелет', hp: 0.55, str: 0.85, blood: null, mat: 'bone', painK: 0, density: 0.5, skeleton: true, noBleedDeath: true, skin: '#ece3cc', shirt: '#ece3cc', pants: '#ece3cc', shoes: '#ddd2b6' },
   fighter: { id: 'fighter', name: 'Боец', hp: 1.15, str: 1.25, blood: 'blood', mat: 'flesh', infectable: true, painK: 0.6, ai: 'fighter' },
   dummy: { id: 'dummy', name: 'Манекен', hp: 1, str: 0, blood: null, mat: 'plastic', painK: 0, immortal: true, noMuscles: true, skin: '#f2c230', shirt: '#f2c230', pants: '#e3ae22', shoes: '#2a2a2a' },
+  juggernaut: { id: 'juggernaut', name: 'Джаггернаут', hp: 3.8, str: 2.4, blood: 'blood', mat: 'metal', painK: 0.12, armor: 0.18, heavyArmor: true, helmet: true, ai: 'soldier', density: 1.85, toughDv: 16, shirt: '#282d33', pants: '#1e2126', shoes: '#131518' },
+  mutant: { id: 'mutant', name: 'Мутант', hp: 4.4, str: 2.8, scale: 1.45, blood: 'zblood', mat: 'flesh', painK: 0.15, infectable: false, density: 1.5, brute: true, ai: 'fighter', skin: '#4d8a38', shirt: '#324a26', pants: '#20301a', shoes: '#152010' },
+  cyborg: { id: 'cyborg', name: 'Киборг', hp: 2.5, str: 1.8, blood: 'oil', mat: 'metal', painK: 0.1, cyborg: true, redEye: true, ai: 'soldier', toughDv: 10, noBleedDeath: true, shirt: '#4b525a', pants: '#373c42', shoes: '#212428' },
+  knight: { id: 'knight', name: 'Рыцарь', hp: 2.0, str: 1.45, blood: 'blood', mat: 'metal', painK: 0.35, armor: 0.32, knightHelm: true, ai: 'fighter', shirt: '#8f969e', pants: '#727880', shoes: '#545960' },
 };
 
 // Геометрия при k=1, стопы в точке y=0, лицом вправо.
@@ -97,6 +101,9 @@ export class Ragdoll extends Entity {
     this.punchAim = 0;
     this.adrenaline = 0;
     this.poison = 0;
+    this.acid = 0;
+    this.antiGrav = 0;
+    this.superSerum = 0;
     this.frozen = 0;
     this.frozenApplied = false;
     this.holding = null;
@@ -115,6 +122,9 @@ export class Ragdoll extends Entity {
   }
 
   get shadowList() { return this.shadowBodies; }
+
+  // Неуязвим: манекен или под супер-сывороткой.
+  get invuln() { return this.type.immortal || this.superSerum > 0; }
 
   createPart(name, x, feetY) {
     const d = PARTS[name];
@@ -395,6 +405,11 @@ export class Ragdoll extends Entity {
 
   preStep(h) {
     const T = this.type;
+    if (this.antiGrav > 0) {
+      // Антигравитация: вес обнулён и тело медленно всплывает.
+      const g = this.sim.def.gravity;
+      for (const p of this.partList) if (!p.gone) p.body.applyForceToCenter(V(0, -g * p.body.getMass() * 1.12), true);
+    }
     if (this.shockT > 0) {
       // Удар током: судорожные сокращения всех мышц (даже у мёртвых).
       this.relaxed = false;
@@ -522,6 +537,26 @@ export class Ragdoll extends Entity {
         const hp = this.parts.head.gone ? null : this.parts.head.body.getPosition();
         if (hp) this.sim.effects.drip(hp.x + 0.08 * this.facing, hp.y + 0.08, 'zblood');
       }
+    }
+    if (this.acid > 0 && !this.parts.chest.gone) {
+      // Кислота: плоть темнеет и разъедается до рваных ран.
+      this.acid -= dt;
+      this.damage(this.parts.chest, dt * 28, 'acid');
+      if (T.blood) this.burn = Math.min(0.75, this.burn + dt * 0.06);
+      if (Math.random() < dt * 1.5) {
+        const p = pick(this.partList.filter((q) => !q.gone));
+        if (p && p.wounds.length < 8) this.addWound(p, p.body.getWorldPoint(V(rand(-0.04, 0.04), rand(-0.08, 0.08))), T.blood ? 'gash' : 'dent', null);
+      }
+      const cp = this.parts.chest.body.getPosition();
+      if (Math.random() < dt * 10) {
+        this.sim.effects.acidSpray(cp.x + (Math.random() - 0.5) * 0.2, cp.y + (Math.random() - 0.5) * 0.3, 0, -1, 4, 1.8);
+        sfx.acidSizzle(cp);
+      }
+    }
+    if (this.antiGrav > 0) this.antiGrav -= dt;
+    if (this.superSerum > 0) {
+      this.superSerum -= dt;
+      this.adrenaline = Math.max(this.adrenaline, 2);
     }
 
     if (T.blood) {
@@ -696,6 +731,9 @@ export class Ragdoll extends Entity {
 
   isEnemy(e) {
     if (!e || e === this || !e.isRagdoll || !e.alive || e.removed) return false;
+    // Мутант крушит всех подряд, и все считают его врагом.
+    if (this.type.brute) return !e.type.brute;
+    if (e.type.brute) return true;
     if (e.type.zombie) return !this.type.zombie;
     return !!(this.team && e.team && e.team !== this.team);
   }
@@ -781,11 +819,13 @@ export class Ragdoll extends Entity {
   damage(p, amount, kind, point, dir) {
     if (!p || p.gone) return;
     const T = this.type;
-    if (kind === 'bullet' && point && T.blood) this.addWound(p, point, 'hole', dir);
+    const plated = T.mat === 'metal' && (p.name === 'chest' || p.name === 'belly' || p.name === 'head');
+    if (kind === 'bullet' && point && T.blood) this.addWound(p, point, plated ? 'dent' : 'hole', dir);
     if ((kind === 'cut' || kind === 'stab') && point) this.addWound(p, point, kind === 'cut' ? 'cut' : 'hole', dir);
     if (kind === 'bullet' && point && !T.blood) this.addWound(p, point, T.robot ? 'dent' : 'crack', dir);
-    if (T.immortal) return;
+    if (this.invuln) return;
     if (kind === 'bullet' && T.armor && (p.name === 'chest' || p.name === 'belly')) amount *= T.armor;
+    if (kind === 'bullet' && T.knightHelm && p.name === 'head') amount *= 0.5;
     if (kind === 'bullet' && T.helmet && p.name === 'head' && point) {
       const l = p.body.getLocalPoint(V(point.x, point.y));
       if (l.y < 0) amount *= 0.45;
@@ -806,7 +846,7 @@ export class Ragdoll extends Entity {
         else if (T.skeleton || T.robot) { if (amount > 25) this.explodeHead(dir); }
         this.die('head');
       } else if (limb) {
-        if (heavy && !T.immortal) this.gibPart(p, dir, 0.25);
+        if (heavy && !this.invuln) this.gibPart(p, dir, 0.25);
         else if (kind === 'cut' || kind === 'blast' || T.fragile || (kind === 'bullet' && amount > 60)) this.sever(p);
         else if (!p.broken) {
           p.broken = true;
@@ -824,7 +864,12 @@ export class Ragdoll extends Entity {
     if (!p) return;
     const T = this.type;
     const fx = this.sim.effects;
-    if (T.blood) {
+    // Латы и бронекостюм: по корпусу и шлему пули высекают искры и рикошетят.
+    const plated = T.mat === 'metal' && T.blood && (p.name === 'chest' || p.name === 'belly' || p.name === 'head');
+    if (plated) {
+      fx.impact('metal', point.x, point.y, -dir.x, -dir.y, 1);
+      sfx.ricochet(point);
+    } else if (T.blood) {
       fx.bloodSpray(point.x, point.y, dir.x, dir.y, 10, 4, T.blood);
       fx.bloodSpray(point.x, point.y, -dir.x, -dir.y, 4, 2, T.blood);
       sfx.hitFlesh(point);
@@ -833,8 +878,8 @@ export class Ragdoll extends Entity {
       if (T.robot) sfx.ricochet(point);
     }
     // Мощные пули вырывают куски плоти (дробовик, винчестер, снайперка).
-    const g = dmg * ((o && o.gore) || 1);
-    if (!T.immortal && chance(clamp((g - 14) / 70, 0, 0.9))) this.tearChunk(p, point, dir, g / 40);
+    const g = dmg * ((o && o.gore) || 1) * (plated ? 0.3 : 1);
+    if (!this.invuln && chance(clamp((g - 14) / 70, 0, 0.9))) this.tearChunk(p, point, dir, g / 40);
     this.damage(p, dmg, 'bullet', point, dir);
   }
 
@@ -846,13 +891,13 @@ export class Ragdoll extends Entity {
     this.stun = Math.max(this.stun, fall * 4);
     const dir = { x: nx, y: ny };
     const limb = p.name !== 'chest' && p.name !== 'belly';
-    if (limb && amount > p.maxHp * 1.3 && !this.type.immortal) {
+    if (limb && amount > p.maxHp * 1.3 && !this.invuln) {
       // Близкий взрыв разносит конечность на куски или отрывает её.
       if (p.name === 'head' && amount > 110 && this.type.blood && chance(0.6)) this.explodeHead(dir);
       else if (amount > p.maxHp * 2 && chance(0.3)) this.gibPart(p, dir, fall);
       else if (chance(0.3)) this.sever(p);
     }
-    if (amount > 30 && !this.type.immortal && !p.gone) {
+    if (amount > 30 && !this.invuln && !p.gone) {
       const n = amount > p.maxHp ? 2 : 1;
       for (let i = 0; i < n; i++) if (chance(0.4)) {
         const bp = p.body.getWorldPoint(V(rand(-0.05, 0.05), rand(-0.08, 0.08)));
@@ -925,7 +970,8 @@ export class Ragdoll extends Entity {
           if (!p || e.removed) return;
           e.damage(p, dmg, 'blunt');
           if (head && Math.random() < 0.3) e.stun = Math.max(e.stun, rand(1, 2.5));
-          ob.applyLinearImpulse(V(f * 18 * this.k, -6), V(pt.x, pt.y), true);
+          const bk = this.type.brute ? 3.5 : 1;
+          ob.applyLinearImpulse(V(f * 18 * this.k * bk, -6 * bk), V(pt.x, pt.y), true);
           sfx.impact('flesh', 0.9, pt);
           if (dmg > 12 && e.type.blood) this.sim.effects.bloodSpray(pt.x, pt.y, f, -0.5, 5, 2, e.type.blood);
         });
@@ -978,7 +1024,7 @@ export class Ragdoll extends Entity {
     const T = this.type;
     const pos = this.parts.chest.body.getPosition();
     const fx = this.sim.effects;
-    const glow = { heal: '#7dffb0', adrenaline: '#ffd23f', zombie: '#b06cff', poison: '#6bbf3a', cryo: '#9fe2ff' }[kind];
+    const glow = { heal: '#7dffb0', adrenaline: '#ffd23f', zombie: '#b06cff', poison: '#6bbf3a', cryo: '#9fe2ff', acid: '#39ff14', antigrav: '#b388ff', super: '#ff1744' }[kind];
     fx.light(pos.x, pos.y, 2.2, 0.5, glow || '#ffffff');
     switch (kind) {
       case 'heal':
@@ -1010,6 +1056,24 @@ export class Ragdoll extends Entity {
         this.frozenApplied = false;
         for (const p of this.partList) this.sim.extinguish(p.body);
         fx.add({ type: 'flash', x: pos.x, y: pos.y, vx: 0, vy: 0, life: 0.3, size: 0.8, color: '#bfe8ff', g: 0 });
+        break;
+      case 'acid':
+        this.acid = 6.0;
+        break;
+      case 'antigrav':
+        this.antiGrav = 22.0;
+        break;
+      case 'super':
+        this.adrenaline = 40;
+        this.superSerum = 40;
+        this.stun = 0;
+        this.pain = 0;
+        if (!this.alive && !this.parts.head.gone) {
+          this.alive = true;
+          this.relaxed = false;
+          this.blood = 100;
+          for (const p of this.partList) p.hp = p.maxHp;
+        }
         break;
     }
   }
@@ -1092,13 +1156,13 @@ export class Ragdoll extends Entity {
 
   goreKind() {
     const T = this.type;
-    return T.robot ? 'metal' : T.skeleton ? 'bone' : T.zombie ? 'zombie' : T.blood ? 'flesh' : null;
+    return T.robot || T.cyborg ? 'metal' : T.skeleton ? 'bone' : T.zombie ? 'zombie' : T.blood ? 'flesh' : null;
   }
 
   // Вырвать кусок плоти: рана-кратер, кровотечение и отлетающий кусок.
   tearChunk(p, point, dir, power = 1) {
     const kind = this.goreKind();
-    if (!kind || p.gone || !point) return;
+    if (!kind || p.gone || !point || this.invuln) return;
     const T = this.type;
     const d = dir || { x: 0, y: -1 };
     const dl = Math.hypot(d.x, d.y) || 1;
@@ -1123,7 +1187,7 @@ export class Ragdoll extends Entity {
 
   // Часть тела разлетается на куски.
   gibPart(p, dir, fall = 1, quiet = false) {
-    if (p.gone || p.gibbing || p.name === 'chest') return;
+    if (p.gone || p.gibbing || p.name === 'chest' || (this.invuln && !quiet)) return;
     p.gibbing = true;
     if (p.name === 'head') { this.explodeHead(dir, quiet); return; }
     this.sim.defer(() => {
@@ -1418,7 +1482,16 @@ export class Ragdoll extends Entity {
       ctx.beginPath();
       ctx.moveTo(hw * 0.25 * f, -hh * 0.62); ctx.lineTo(hw * 0.25 * f, hh);
       ctx.stroke();
-      if (T.armor) {
+      if (T.heavyArmor) {
+        ctx.fillStyle = '#1e2227';
+        ctx.fillRect(-hw * 1.05, -hh * 0.7, hw * 2.1, hh * 1.6);
+        ctx.strokeStyle = '#5a626d'; ctx.lineWidth = 0.025;
+        ctx.strokeRect(-hw * 1.02, -hh * 0.68, hw * 2.04, hh * 1.56);
+        ctx.fillStyle = '#9aa1a9';
+        for (const [bx, by] of [[-0.85, -0.55], [0.85, -0.55], [-0.85, 0.7], [0.85, 0.7]]) {
+          ctx.beginPath(); ctx.arc(hw * bx, hh * by, 0.02, 0, TAU); ctx.fill();
+        }
+      } else if (T.armor) {
         ctx.fillStyle = shade(this.colorOf({ role: 'shirt' }), -0.25);
         ctx.fillRect(-hw * 0.95, -hh * 0.55, hw * 1.9, hh * 1.5);
         ctx.fillStyle = shade(this.colorOf({ role: 'shirt' }), -0.4);
@@ -1529,7 +1602,8 @@ export class Ragdoll extends Entity {
         ctx.strokeStyle = '#2a1a1a'; ctx.lineWidth = r * 0.07;
         ctx.beginPath(); ctx.moveTo(ex - r * 0.13, ey); ctx.lineTo(ex + r * 0.13, ey); ctx.stroke();
       } else {
-        ctx.fillStyle = T.zombie ? '#e8e070' : '#ffffff';
+        if (T.redEye && !dead) { ctx.fillStyle = 'rgba(255, 23, 68, 0.45)'; ctx.beginPath(); ctx.arc(ex, ey, r * 0.32, 0, TAU); ctx.fill(); }
+        ctx.fillStyle = T.redEye ? '#ff1744' : (T.zombie ? '#e8e070' : '#ffffff');
         ctx.beginPath(); ctx.ellipse(ex, ey, r * 0.15, r * (this.pain > 60 ? 0.07 : 0.14), 0, 0, TAU); ctx.fill();
         ctx.fillStyle = T.zombie ? '#b01818' : '#1d2a3a';
         ctx.beginPath(); ctx.arc(ex + r * 0.06, ey, r * 0.075, 0, TAU); ctx.fill();
@@ -1567,13 +1641,25 @@ export class Ragdoll extends Entity {
         ctx.fillStyle = this.team === 'red' ? '#ff3b30' : '#2f7bff';
         ctx.fillRect(-r * 1.0, -r * 0.55, r * 2.0, r * 0.22);
       }
-      if (T.helmet) {
-        ctx.fillStyle = '#4c5a33';
+      if (T.knightHelm) {
+        ctx.fillStyle = '#7a828a';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 1.18, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = '#555b62';
+        ctx.fillRect(-r * 1.15, -r * 0.25, r * 2.3, r * 0.5);
+        ctx.fillStyle = '#d4af37';
+        ctx.fillRect(-r * 0.1, -r * 1.05, r * 0.2, r * 2.1);
+        ctx.fillRect(-r * 0.9, -r * 0.1, r * 1.8, r * 0.2);
+        ctx.fillStyle = '#111316';
+        ctx.fillRect(r * 0.15, -r * 0.08, r * 0.65, r * 0.16);
+      } else if (T.helmet) {
+        ctx.fillStyle = T.heavyArmor ? '#1e2227' : '#4c5a33';
         ctx.beginPath();
         ctx.arc(0, -r * 0.05, r * 1.15, Math.PI * 1.0, Math.PI * 2.0);
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = '#3c4727';
+        ctx.fillStyle = T.heavyArmor ? '#111316' : '#3c4727';
         ctx.fillRect(-r * 1.25, -r * 0.12, r * 2.5, r * 0.16);
         ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = r * 0.06;
         ctx.beginPath(); ctx.arc(0, -r * 0.05, r * 0.9, Math.PI * 1.25, Math.PI * 1.6); ctx.stroke();

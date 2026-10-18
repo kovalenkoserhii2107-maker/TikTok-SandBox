@@ -6,6 +6,7 @@ import { R, TAU } from '../util.js';
 export const POOLS = {
   pool: { name: 'Бассейн', w: 6, d: 2.9, wall: 0.3, color: '#cfe6ee', glass: false },
   tank: { name: 'Аквариум', w: 3.2, d: 1.8, wall: 0.08, color: '#bfe6f5', glass: true },
+  acidPool: { name: 'Бассейн с кислотой', w: 5.5, d: 2.8, wall: 0.35, color: '#1b5e20', acid: true },
 };
 
 export class Pool extends Entity {
@@ -70,13 +71,18 @@ export class Pool extends Entity {
     // Поверхность воды (видна сверху в перспективе).
     r.screen();
     r.groundQuad(w.top, zf, zb, w.x0, w.x1);
-    ctx.fillStyle = 'rgba(140,215,240,0.32)';
+    ctx.fillStyle = this.def.acid ? 'rgba(57,255,20,0.4)' : 'rgba(140,215,240,0.32)';
     ctx.fill();
     // Передняя «стенка» воды с глубинным градиентом и волной.
     r.face(zf);
     const g = ctx.createLinearGradient(0, w.top, 0, w.bottom);
-    g.addColorStop(0, 'rgba(80,190,230,0.42)');
-    g.addColorStop(1, 'rgba(18,90,140,0.62)');
+    if (this.def.acid) {
+      g.addColorStop(0, 'rgba(76,175,80,0.5)');
+      g.addColorStop(1, 'rgba(27,94,32,0.85)');
+    } else {
+      g.addColorStop(0, 'rgba(80,190,230,0.42)');
+      g.addColorStop(1, 'rgba(18,90,140,0.62)');
+    }
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(w.x0, w.bottom);

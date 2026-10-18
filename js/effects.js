@@ -100,6 +100,44 @@ export class Effects {
     this.add({ type: 'bubble', x, y, vx: rand(-0.2, 0.2), vy: rand(-1.2, -0.6), life: rand(0.5, 1.1), size: rand(0.015, 0.035), g: 0, color: '#e8f7ff' });
   }
 
+  acidSpray(x, y, dx, dy, count = 12, speed = 4) {
+    for (let i = 0, n = this.n(count); i < n; i++) {
+      const s = speed * rand(0.4, 1.2);
+      const a = Math.atan2(dy, dx) + rand(-0.7, 0.7);
+      this.add({
+        type: 'drop', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(-1, 1),
+        life: rand(0.8, 1.8), size: rand(0.025, 0.05), color: Math.random() < 0.6 ? '#39ff14' : '#76ff03', kind: 'acid',
+      });
+    }
+    for (let i = 0; i < 2; i++) this.smokePuff(x + rand(-0.1, 0.1), y + rand(-0.1, 0.1), 0.25, '#4caf50', 0.4);
+  }
+
+  lightningArc(x0, y0, x1, y1, color = '#00f0ff') {
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const steps = Math.max(3, Math.floor(dist * 6));
+    let cx = x0, cy = y0;
+    const nx = -(y1 - y0) / (dist || 1);
+    const ny = (x1 - x0) / (dist || 1);
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const jx = (x0 + (x1 - x0) * t) + (i < steps ? (Math.random() - 0.5) * 0.28 * nx : 0);
+      const jy = (y0 + (y1 - y0) * t) + (i < steps ? (Math.random() - 0.5) * 0.28 * ny : 0);
+      this.tracer(cx, cy, jx, jy, color, 1.8);
+      if (Math.random() < 0.3) this.sparks(jx, jy, 2, 0.5);
+      cx = jx; cy = jy;
+    }
+    this.light((x0 + x1) / 2, (y0 + y1) / 2, Math.min(dist + 1, 5), 0.15, color);
+  }
+
+  wind(x, y, dx, dy, speed = 8) {
+    if (Math.random() > 0.4) return;
+    this.add({
+      type: 'smoke', x: x + rand(-0.2, 0.2), y: y + rand(-0.3, 0.3),
+      vx: dx * speed * rand(0.8, 1.2), vy: dy * speed * rand(0.8, 1.2),
+      life: rand(0.2, 0.45), size: rand(0.12, 0.28), color: '#d8ecf8', alpha: 0.25,
+    });
+  }
+
   sparks(x, y, count = 8, speed = 1, dx = 0, dy = -1) {
     for (let i = 0, n = this.n(count); i < n; i++) {
       const a = Math.atan2(dy, dx) + rand(-1.3, 1.3);

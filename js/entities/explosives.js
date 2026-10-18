@@ -1,5 +1,5 @@
 // Взрывчатка: граната, динамит, мина, C4, авиабомба, бочка, ядерная бомба.
-import { Entity, visPoly, visCircle, visRRect, V, CAT, pl } from './base.js';
+import { Entity, visPoly, visCircle, visRRect, V, CAT, pl, hurt } from './base.js';
 import { polyShape, circleShape } from '../sim.js';
 import { R, rand, TAU, polyArea, mirrorPts, roundRectPath } from '../util.js';
 import { sfx } from '../audio.js';
@@ -24,7 +24,146 @@ export const EXPLOSIVES = {
   barrel: { name: 'Взрывоопасная бочка', mass: 40, P: 1.8, R: 8, chain: 8, hp: 35 },
   bomb: { name: 'Авиабомба', mass: 230, P: 4.2, R: 15, chain: 20 },
   nuke: { name: 'Ядерная бомба', mass: 900, P: 30, R: 80, fuse: 5, nuke: true },
+  blackHole: { name: 'Чёрная дыра', mass: 1.5, fuse: 2, blackHole: true },
+  gasGrenade: { name: 'Газовая граната', mass: 0.6, fuse: 2.5, gas: true },
+  clusterBomb: { name: 'Кассетная бомба', mass: 80, P: 2.2, R: 8, fuse: 3, cluster: true },
 };
+
+// Сингулярность: затягивает всё вокруг, рвёт тех, кто попал в центр, и взрывается.
+class BlackHoleVortex extends Entity {
+  constructor(sim, x, y) {
+    super(sim);
+    this.name = 'Сингулярность';
+    this.x = x; this.y = y;
+    this.life = 4.5;
+    this.age = 0;
+    this.rot = 0;
+    this.noShadow = true;
+    const b = this.makeBody(x, y, 0);
+    b.setStatic();
+    sfx.blackHole({ x, y });
+    this.vis({ custom: (r) => this.drawVortex(r), z: -0.4, t: 0, body: b, outline: null });
+  }
+
+  get radius() { return Math.min(1, this.age / 0.6); }
+
+  // Силы — в каждом подшаге физики (после шага planck их обнуляет).
+  preStep() {
+    const R = 13 * this.radius;
+    for (const e of this.sim.entities) {
+      if (e === this || e.removed || e.permanentStatic) continue;
+      for (const b of e.bodies) {
+        if (!b.isDynamic()) continue;
+        const p = b.getPosition();
+        const dx = this.x - p.x, dy = this.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > R || d < 0.05) continue;
+        const acc = Math.min(70, ((R - d) / R) * 90 / Math.max(0.6, d));
+        const m = b.getMass();
+        b.applyForceToCenter(V((dx / d) * acc * m, (dy / d) * acc * m), true);
+        // Закручивание в воронку.
+        b.applyForceToCenter(V((-dy / d) * acc * m * 0.35, (dx / d) * acc * m * 0.35), true);
+      }
+    }
+  }
+
+  update(dt) {
+    this.life -= dt;
+    this.age += dt;
+    this.rot += dt * 6;
+    const sim = this.sim;
+    const x = this.x, y = this.y;
+    if (Math.random() < dt * 3) sfx.blackHole({ x, y });
+    for (const e of sim.entities) {
+      if (e === this || e.removed || !e.damage) continue;
+      for (const b of e.bodies) {
+        if (!b.isDynamic()) continue;
+        const p = b.getPosition();
+        if (Math.hypot(x - p.x, y - p.y) < 0.9) {
+          hurt(e, b, dt * 120, 'blast', { x: p.x, y: p.y });
+          const v = b.getLinearVelocity();
+          b.setLinearVelocity(V(v.x * 0.8, v.y * 0.8));
+        }
+      }
+    }
+    for (let i = 0; i < 3; i++) {
+      const a = rand(0, TAU);
+      const r = rand(1.5, 4.5) * this.radius;
+      sim.effects.add({
+        type: 'spark', x: x + Math.cos(a) * r, y: y + Math.sin(a) * r,
+        vx: -Math.cos(a - 0.6) * 7, vy: -Math.sin(a - 0.6) * 7,
+        life: 0.4, size: 0.035, g: 0, color: Math.random() < 0.5 ? '#b388ff' : '#00e5ff',
+      });
+    }
+    if (this.life <= 0) {
+      sim.remove(this);
+      sim.explode(x, y, 3.5, 12);
+    }
+  }
+
+  drawVortex(r) {
+    const ctx = r.ctx;
+    const [sx, sy] = r.P(this.x, this.y, 0);
+    const k = r.k(0) * this.radius;
+    const pulse = 1 + Math.sin(this.age * 9) * 0.05;
+    r.screen();
+    ctx.save();
+    ctx.translate(sx, sy);
+    const R = 2.2 * k * pulse;
+    const grad = ctx.createRadialGradient(0, 0, 0.25 * k, 0, 0, R);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(0.28, 'rgba(0,0,0,1)');
+    grad.addColorStop(0.4, 'rgba(156,39,176,0.85)');
+    grad.addColorStop(0.7, 'rgba(0,229,255,0.35)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fill();
+    // Аккреционный диск.
+    ctx.rotate(this.rot);
+    ctx.strokeStyle = 'rgba(0,229,255,0.75)';
+    ctx.lineWidth = Math.max(1, 0.05 * k);
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, R * (0.55 + i * 0.12), R * (0.18 + i * 0.04), 0, i, i + 4.2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// Облако ядовитого газа: душит живых, кто внутри.
+class GasCloud extends Entity {
+  constructor(sim, x, y) {
+    super(sim);
+    this.name = 'Токсичный газ';
+    this.x = x; this.y = Math.min(y, -1);
+    this.life = 8.5;
+    this.noShadow = true;
+    const b = this.makeBody(x, y, 0);
+    b.setStatic();
+  }
+
+  update(dt) {
+    this.life -= dt;
+    const sim = this.sim;
+    const x = this.x, y = this.y;
+    if (this.life > 1 && Math.random() < dt * 22) {
+      sim.effects.smokePuff(x + rand(-2.4, 2.4), y + rand(-1.2, 1), rand(0.6, 1.3), Math.random() < 0.6 ? '#8bc34a' : '#c0ca33', 0.4);
+    }
+    for (const e of sim.entities) {
+      if (!e.isRagdoll || !e.alive || e.type.robot || e.type.skeleton || e.type.cyborg || e.type.immortal) continue;
+      if (e.parts.head.gone) continue;
+      const hp = e.parts.head.body.getPosition();
+      if (Math.abs(hp.x - x) < 3.8 && Math.abs(hp.y - y) < 2.6) {
+        e.damage(e.parts.chest, dt * 16, 'poison');
+        e.poison = Math.max(e.poison, 2.5);
+        e.stun = Math.max(e.stun, 0.4);
+        if (Math.random() < dt * 1.5) sfx.groan(hp);
+      }
+    }
+    if (this.life <= 0) sim.remove(this);
+  }
+}
 
 export class Explosive extends Entity {
   constructor(sim, x, y, id, f = 1) {
@@ -57,6 +196,30 @@ export class Explosive extends Entity {
       const v = visPoly(b, pts, { z: 0, t: o.t ?? 0.1, color, ...o.v });
       return this.vis(v);
     };
+    if (id === 'blackHole') {
+      const v = visCircle(b, 0.16, { z: 0, t: 0.16, color: '#120024' });
+      this.vis(v);
+      this.fix(b, circleShape(0.16), { density: 50, friction: 0.5, mat: 'metal' });
+      v.detail = (ctx) => {
+        ctx.strokeStyle = '#9c27b0'; ctx.lineWidth = 0.03;
+        ctx.beginPath(); ctx.arc(0, 0, 0.19, 0, TAU); ctx.stroke();
+        ctx.fillStyle = '#00e5ff';
+        ctx.beginPath(); ctx.arc(0, 0, 0.05, 0, TAU); ctx.fill();
+      };
+      return;
+    }
+    if (id === 'gasGrenade') {
+      add(R(-0.08, -0.16, 0.08, 0.16), '#546e7a', { t: 0.16 });
+      add(R(-0.082, -0.05, 0.082, 0.05), '#76ff03', { t: 0.17, vis: true });
+      add([[-0.03, -0.22], [0.03, -0.22], [0.04, -0.16], [-0.04, -0.16]], '#37474f', { t: 0.08 });
+      return;
+    }
+    if (id === 'clusterBomb') {
+      add(R(-0.55, -0.2, 0.45, 0.2), '#37474f', { t: 0.4 });
+      add([[0.45, -0.2], [0.72, 0], [0.45, 0.2]], '#263238', { t: 0.35 });
+      add([[-0.72, -0.32], [-0.55, -0.15], [-0.55, 0.15], [-0.72, 0.32]], '#ffb300', { t: 0.05 });
+      return;
+    }
     if (id === 'grenade') {
       this.fix(b, circleShape(0.065), { density: d.mass / (Math.PI * 0.065 * 0.065), friction: 0.6, mat: 'metal', restitution: 0.3 });
       const v = this.vis(visCircle(b, 0.065, { z: 0, t: 0.13, color: '#4b5a32', sphere: true }));
@@ -343,6 +506,20 @@ export class Explosive extends Entity {
       const d = this.def;
       this.sim.remove(this);
       if (d.fire) { this.splashFire(x, y); return; }
+      if (d.blackHole) { this.sim.add(new BlackHoleVortex(this.sim, x, y)); return; }
+      if (d.gas) { this.sim.add(new GasCloud(this.sim, x, y)); sfx.flame({ x, y }); return; }
+      if (d.cluster) {
+        this.sim.explode(x, y, d.P, d.R);
+        for (let i = 0; i < 7; i++) {
+          const a = rand(Math.PI * 1.1, Math.PI * 1.9);
+          const spd = rand(6, 14);
+          const sub = new Explosive(this.sim, x + Math.cos(a) * 0.35, y - 0.25 + Math.sin(a) * 0.25, 'grenade');
+          this.sim.add(sub);
+          sub.timer = rand(0.8, 1.8);
+          sub.main.setLinearVelocity(V(Math.cos(a) * spd, Math.sin(a) * spd));
+        }
+        return;
+      }
       this.sim.explode(x, y, d.P, d.R, { nuke: d.nuke });
       if (d.shrapnel) {
         for (let i = 0; i < d.shrapnel; i++) {

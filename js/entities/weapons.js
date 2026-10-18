@@ -1,5 +1,5 @@
 // Огнестрельное оружие, холодное оружие и снаряды (ракеты).
-import { Entity, visPoly, V, CAT, pl } from './base.js';
+import { Entity, visPoly, V, CAT, pl, hurt } from './base.js';
 import { polyShape } from '../sim.js';
 import { R, rand, gauss, TAU, polyArea, clamp, len, mirrorPts } from '../util.js';
 import { sfx } from '../audio.js';
@@ -122,6 +122,46 @@ export const GUNS = {
       { pts: [[-0.085, -0.03], [-0.035, -0.03], [-0.045, 0.07], [-0.095, 0.065]], color: '#2b2e26' },
       { pts: [[0.17, -0.03], [0.21, -0.03], [0.2, 0.06], [0.16, 0.06]], color: '#2b2e26', vis: true },
       { pts: [[0.45, -0.115], [0.58, -0.105], [0.7, -0.07], [0.58, -0.035], [0.45, -0.025]], color: '#5d6b3c', vis: true, warhead: true },
+    ],
+  },
+  railgun: {
+    name: 'Рельсотрон', mass: 5.6, rate: 1.1, dmg: 350, imp: 75, spread: 0.002, recoil: 8.5, snd: 'railgun', flash: 2.2, pen: 16.0,
+    tracer: '#00e5ff', tracerW: 3.5, gore: 3.0,
+    grip: [-0.14, 0.02], muzzle: [0.58, -0.05], noCasing: true,
+    shapes: [
+      { pts: R(-0.35, -0.09, 0.22, -0.02), color: '#1a1d24' },
+      { pts: R(0.22, -0.08, 0.56, -0.06), color: '#00d2ff' },
+      { pts: R(0.22, -0.04, 0.56, -0.02), color: '#00d2ff' },
+      { pts: R(-0.15, -0.12, 0.18, -0.09), color: '#00e5ff', vis: true },
+      { pts: [[-0.35, -0.02], [-0.15, -0.02], [-0.2, 0.12], [-0.32, 0.14]], color: '#111317' },
+    ],
+  },
+  sawnoff: {
+    name: 'Двустволка', mass: 2.4, rate: 0.65, pellets: 16, dmg: 24, imp: 14, spread: 0.12, recoil: 7.2, snd: 'sawnoff', flash: 1.6, gore: 2.4, pen: 0.9,
+    grip: [-0.08, 0.015], muzzle: [0.28, -0.05], eject: [0.0, -0.07],
+    shapes: [
+      { pts: R(-0.25, -0.06, -0.05, 0.02), color: WOOD },
+      { pts: R(-0.05, -0.07, 0.28, -0.035), color: STEEL },
+      { pts: [[-0.25, 0.0], [-0.12, 0.0], [-0.16, 0.12], [-0.26, 0.1]], color: '#5a2e14' },
+    ],
+  },
+  crossbow: {
+    name: 'Арбалет', mass: 3.0, rate: 1.0, arrow: true, recoil: 0.7, snd: 'crossbow', flash: 0, noCasing: true,
+    grip: [-0.1, 0.02], muzzle: [0.38, -0.04],
+    shapes: [
+      { pts: R(-0.3, -0.055, 0.35, -0.02), color: WOOD },
+      { pts: [[0.22, -0.24], [0.28, -0.06], [0.28, -0.02], [0.22, 0.16]], color: STEEL },
+      { pts: [[-0.3, -0.02], [-0.12, -0.02], [-0.16, 0.12], [-0.28, 0.11]], color: '#5a2e14' },
+    ],
+  },
+  tesla: {
+    name: 'Тесла-пушка', mass: 4.5, rate: 0.22, tesla: true, recoil: 1.2, snd: 'tesla', flash: 1.5, noCasing: true,
+    grip: [-0.12, 0.02], muzzle: [0.42, -0.05],
+    shapes: [
+      { pts: R(-0.3, -0.08, 0.22, -0.02), color: '#2b2e35' },
+      { pts: R(0.22, -0.09, 0.4, -0.01), color: '#ffb300' },
+      { pts: [[0.4, -0.08], [0.44, -0.08], [0.42, -0.02]], color: '#00e5ff' },
+      { pts: [[-0.3, -0.02], [-0.12, -0.02], [-0.16, 0.12], [-0.28, 0.1]], color: '#16181d' },
     ],
   },
 };
@@ -258,6 +298,13 @@ export class Firearm extends Weapon {
       for (let i = 0; i < 6; i++) sim.effects.smokePuff(back.x - dir.x * rand(0, 0.8), back.y - dir.y * rand(0, 0.8), 0.25, '#bbbbbb', 0.5);
       sim.effects.muzzle(mz.x, mz.y, dir.x, dir.y, 1.2);
       sfx.rocket(mz);
+    } else if (d.arrow) {
+      const bv = b.getLinearVelocity();
+      const arr = new Projectile(sim, mz.x + dir.x * 0.15, mz.y + dir.y * 0.15, dir.x * 42 + bv.x, dir.y * 42 + bv.y, { kind: 'arrow', group });
+      sim.add(arr);
+      sfx.shot('crossbow', mz);
+    } else if (d.tesla) {
+      this.teslaZap(mz, dir, group);
     } else {
       const base = Math.atan2(dir.y, dir.x);
       for (let i = 0; i < (d.pellets || 1); i++) {
@@ -273,12 +320,51 @@ export class Firearm extends Weapon {
         const bv = b.getLinearVelocity();
         sim.effects.casing(ep.x, ep.y, bv.x + up.x * rand(2, 3.5), bv.y + up.y * rand(2, 3.5), d.shellBig);
       }
-      sfx.shot(d.snd, mz);
+      if (d.snd === 'railgun') { sfx.railgun(mz); sim.shake(0.35); }
+      else sfx.shot(d.snd, mz);
     }
     b.applyLinearImpulse(V(-dir.x * d.recoil, -dir.y * d.recoil), mz, true);
     b.applyAngularImpulse(-this.ys() * d.recoil * 0.012, true);
     if (d.recoil > 8) sim.shake(d.recoil * 0.12);
     return true;
+  }
+
+  // Тесла-пушка: молния бьёт ближайшую цель в конусе и перескакивает ещё на две.
+  teslaZap(mz, dir, group) {
+    const sim = this.sim;
+    sfx.tesla(mz);
+    sim.effects.muzzle(mz.x, mz.y, dir.x, dir.y, 1.2);
+    const hit = new Set([this, this.holder]);
+    const pick = (from, maxD, cone) => {
+      let best = null, bd = maxD;
+      for (const e of sim.entities) {
+        if (hit.has(e) || e.removed || !e.damage || e.isGore || e.isDebris) continue;
+        const b = e.isRagdoll ? e.parts.chest.body : e.main;
+        if (!b) continue;
+        const p = b.getPosition();
+        const dx = p.x - from.x, dy = p.y - from.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 0.15 || d >= bd) continue;
+        if (cone && (dx * dir.x + dy * dir.y) / d < 0.75) continue;
+        bd = d; best = { e, b, p: { x: p.x, y: p.y } };
+      }
+      return best;
+    };
+    let from = mz;
+    let t = pick(mz, 12, true);
+    if (!t) {
+      sim.effects.lightningArc(mz.x, mz.y, mz.x + dir.x * 7, mz.y + dir.y * 7, '#00e5ff');
+      return;
+    }
+    for (let n = 0; t && n < 3; n++) {
+      hit.add(t.e);
+      sim.effects.lightningArc(from.x, from.y, t.p.x, t.p.y, '#00e5ff');
+      if (t.e.shock) t.e.shock(t.b, 0.4);
+      hurt(t.e, t.b, n === 0 ? 55 : 30, 'electric', t.p);
+      sim.effects.sparks(t.p.x, t.p.y, 8, 1.5);
+      from = t.p;
+      t = pick(from, 4, false);
+    }
   }
 
   flame(mz, dir, group) {
@@ -391,6 +477,24 @@ export const MELEE = {
       { pts: [[0.6, -0.04], [0.85, 0.0], [0.6, 0.04]], color: '#c9ced4', sharp: true },
     ],
   },
+  chainsaw: {
+    name: 'Бензопила', mass: 5.2, cutK: 8.5, chainsaw: true, noStab: true,
+    grip: [-0.2, 0.02], muzzle: [0.48, -0.04],
+    shapes: [
+      { pts: R(-0.32, -0.12, 0.05, 0.06), color: '#d84315' },
+      { pts: R(0.05, -0.07, 0.48, -0.01), color: STEEL, sharp: true },
+      { pts: [[-0.32, -0.02], [-0.2, -0.02], [-0.22, 0.14], [-0.32, 0.12]], color: '#212121' },
+      { pts: R(-0.08, -0.18, 0.02, -0.12), color: '#424242' },
+    ],
+  },
+  shield: {
+    name: 'Щит ОМОН', mass: 8.5, shield: true, mat: 'armor', noStab: true, cutK: 0.8, stabK: 0.5,
+    grip: [0.0, 0.0], muzzle: [0.12, 0.0],
+    shapes: [
+      { pts: [[-0.08, -0.65], [0.08, -0.65], [0.08, 0.65], [-0.08, 0.65]], color: '#37474f' },
+      { pts: [[-0.05, -0.3], [0.05, -0.3], [0.05, -0.12], [-0.05, -0.12]], color: '#81d4fa' },
+    ],
+  },
 };
 
 // Шприцы: тонкая игла (острая), прозрачный цилиндр с жидкостью.
@@ -407,6 +511,9 @@ function syringe(name, kind, liquid) {
   };
 }
 Object.assign(MELEE, {
+  syrAcid: syringe('Шприц: кислота', 'acid', '#39ff14'),
+  syrAntiGrav: syringe('Шприц: антигравитация', 'antigrav', '#b388ff'),
+  syrSuper: syringe('Шприц: супер-сыворотка', 'super', '#ff1744'),
   syrHeal: syringe('Шприц: лечение', 'heal', '#3ddc84'),
   syrAdrenaline: syringe('Шприц: адреналин', 'adrenaline', '#ffd23f'),
   syrZombie: syringe('Шприц: зомби-вирус', 'zombie', '#a35cff'),
@@ -438,6 +545,27 @@ export class Melee extends Weapon {
     super.update(dt);
     this.stabCd -= dt;
     this.embeds = this.embeds.filter((l) => !l.dead);
+    if (this.def.chainsaw && this.holder) {
+      const b = this.main;
+      const pos = b.getPosition();
+      if (Math.random() < dt * 8) sfx.chainsaw(pos);
+      for (let ce = b.getContactList(); ce; ce = ce.next) {
+        if (!ce.contact.isTouching()) continue;
+        const ud = ce.other.getUserData();
+        const e = ud && ud.ent;
+        if (!e || e === this.holder) continue;
+        const wm = ce.contact.getWorldManifold(null);
+        const pt = wm && wm.points[0] ? { x: wm.points[0].x, y: wm.points[0].y } : pos;
+        if (e.isRagdoll && ud.part && e.parts[ud.part]) {
+          const part = e.parts[ud.part];
+          e.damage(part, dt * 140, 'cut', pt);
+          if (e.type.blood && Math.random() < dt * 15) this.sim.effects.bloodSpray(pt.x, pt.y, -1, 0, 8, 2, e.type.blood);
+          if (Math.random() < dt * 2.5) e.tearChunk(part, pt, b.getWorldVector(V(0, -1)), 1.2);
+        } else if (e.damage) {
+          e.damage(dt * 120, 'cut', ce.other, pt);
+        }
+      }
+    }
   }
 
   onBegin(c, myFix, otherFix) {
@@ -548,7 +676,7 @@ export class Projectile extends Entity {
     super(sim);
     this.o = o;
     this.kind = o.kind;
-    this.name = o.kind === 'rocket' ? 'Ракета' : 'Снаряд';
+    this.name = o.kind === 'rocket' ? 'Ракета' : o.kind === 'arrow' ? 'Болт' : 'Снаряд';
     this.life = 8;
     this.hit = false;
     this.noShadow = true;
@@ -557,12 +685,18 @@ export class Projectile extends Entity {
     b.setFixedRotation(true);
     const pts = o.kind === 'rocket'
       ? [[-0.22, -0.045], [0.12, -0.045], [0.24, 0], [0.12, 0.045], [-0.22, 0.045]]
+      : o.kind === 'arrow'
+      ? [[-0.25, -0.012], [0.18, -0.012], [0.25, 0], [0.18, 0.012], [-0.25, 0.012]]
       : [[-0.18, -0.06], [0.1, -0.06], [0.2, 0], [0.1, 0.06], [-0.18, 0.06]];
-    this.fix(b, polyShape(pts), { density: o.kind === 'rocket' ? 60 : 400, group: o.group || this.group, cat: CAT.PROJ, mat: 'metal' });
+    this.fix(b, polyShape(pts), { density: o.kind === 'rocket' ? 60 : o.kind === 'arrow' ? 85 : 400, group: o.group || this.group, cat: CAT.PROJ, mat: o.kind === 'arrow' ? 'wood' : 'metal' });
     b.setLinearVelocity(V(vx, vy));
     if (o.kind === 'rocket') b.setGravityScale(0.25);
-    this.vis(visPoly(b, pts, { z: 0, t: 0.09, color: o.kind === 'rocket' ? '#5d6b3c' : '#b8902f' }));
+    this.vis(visPoly(b, pts, { z: 0, t: o.kind === 'arrow' ? 0.04 : 0.09, color: o.kind === 'rocket' ? '#5d6b3c' : o.kind === 'arrow' ? '#8a5229' : '#b8902f' }));
     if (o.kind === 'rocket') this.vis(visPoly(b, [[-0.26, -0.08], [-0.16, -0.045], [-0.16, 0.045], [-0.26, 0.08]], { z: 0, t: 0.02, color: '#3c4829' }));
+    if (o.kind === 'arrow') {
+      this.vis(visPoly(b, [[-0.25, -0.04], [-0.15, -0.012], [-0.15, 0.012], [-0.25, 0.04]], { z: 0, t: 0.01, color: '#e53935' }));
+      this.vis(visPoly(b, [[0.16, -0.025], [0.26, 0], [0.16, 0.025]], { z: 0, t: 0.02, color: '#e0e0e0' }));
+    }
   }
 
   preStep(h) {
@@ -580,7 +714,7 @@ export class Projectile extends Entity {
     const b = this.main;
     if (!b) return;
     const v = b.getLinearVelocity();
-    b.setTransform(b.getPosition(), Math.atan2(v.y, v.x));
+    if (!this.stuck) b.setTransform(b.getPosition(), Math.atan2(v.y, v.x));
     const p = b.getPosition();
     if (this.kind === 'rocket') {
       const s = Math.max(0.1, len(v.x, v.y));
@@ -595,11 +729,47 @@ export class Projectile extends Entity {
   onBegin(c, myFix, otherFix) {
     if (this.hit || (otherFix && otherFix.isSensor())) return;
     this.hit = true;
+    if (this.kind === 'arrow') {
+      const ob = otherFix.getBody();
+      const oud = ob.getUserData();
+      const e = oud && oud.ent;
+      const b = this.main;
+      const v = b.getLinearVelocity();
+      const sp = Math.hypot(v.x, v.y) || 1;
+      const dir = { x: v.x / sp, y: v.y / sp };
+      const tip = b.getWorldPoint(V(0.25, 0));
+      this.sim.defer(() => this.stick(ob, e, tip, dir, sp));
+      return;
+    }
     this.sim.defer(() => this.boom());
+  }
+
+  // Болт арбалета втыкается в то, во что попал, и остаётся торчать.
+  stick(ob, e, tip, dir, sp) {
+    if (this.removed) return;
+    const sim = this.sim, b = this.main;
+    if (e && e !== this) {
+      hurt(e, ob, 70 * Math.min(1.3, sp / 40), 'stab', tip, dir);
+      if (e.isRagdoll && e.type.blood) sim.effects.bloodSpray(tip.x, tip.y, -dir.x, -dir.y, 8, 2, e.type.blood);
+    } else sim.effects.impact((ob.getFixtureList()?.getUserData() || {}).mat || 'wood', tip.x, tip.y, -dir.x, -dir.y, 0.6);
+    sfx.stab(tip);
+    if (ob.m_destroyed || (e && e.removed)) { sim.remove(this); return; }
+    // Вгоняем наконечник на 8 см внутрь и привариваем.
+    const p = b.getPosition();
+    b.setTransform(V(p.x + dir.x * 0.08, p.y + dir.y * 0.08), Math.atan2(dir.y, dir.x));
+    b.setLinearVelocity(ob.getLinearVelocity());
+    b.setBullet(false);
+    b.setFixedRotation(false);
+    for (let f = b.getFixtureList(); f; f = f.getNext()) f.setSensor(true);
+    const j = sim.world.createJoint(new pl.WeldJoint({}, b, ob, V(tip.x + dir.x * 0.08, tip.y + dir.y * 0.08)));
+    this.link = sim.addLink(j, { type: 'embed', breakForce: 3000, onBreak: () => { this.life = Math.min(this.life, 3); } });
+    this.stuck = true;
+    this.life = 25;
   }
 
   boom() {
     if (this.removed) return;
+    if (this.kind === 'arrow') { this.sim.remove(this); return; }
     const p = this.main.getPosition();
     this.sim.remove(this);
     this.sim.explode(p.x, p.y, this.o.P, this.o.R);

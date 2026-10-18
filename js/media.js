@@ -9,7 +9,7 @@ const BUFFER_SEC = 10;
 const REC_HZ = 60;
 const MAX_REC_SEC = 60;
 const FX_METHODS = ['bloodSpray', 'drip', 'splash', 'bubble', 'sparks', 'dust', 'chunks', 'glassShards', 'impact', 'muzzle',
-  'casing', 'smokePuff', 'flame', 'tracer', 'light', 'ring', 'decal', 'explosion'];
+  'casing', 'smokePuff', 'flame', 'tracer', 'light', 'ring', 'decal', 'explosion', 'acidSpray', 'lightningArc', 'wind'];
 const NO_LOG_SFX = new Set(['ui', 'click']);
 
 export const GAME_NAME = 'KABOOM SANDBOX';

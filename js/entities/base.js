@@ -156,4 +156,13 @@ export class Entity {
   }
 }
 
+// Урон любому объекту: у персонажей своя сигнатура (часть тела), у остальных — (сила, тип).
+export function hurt(e, body, amount, kind, point, dir) {
+  if (!e || e.removed || !e.damage) return;
+  if (e.isRagdoll) {
+    const p = (body && e.partOf(body)) || e.parts.chest;
+    if (p && !p.gone) e.damage(p, amount, kind, point, dir);
+  } else e.damage(amount, kind, body, point);
+}
+
 export { pl, V, CAT };
