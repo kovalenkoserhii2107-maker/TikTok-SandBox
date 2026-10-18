@@ -53,15 +53,15 @@
 
     <div id="drive" class="drive hidden">
       <div class="dleft">
-        <button id="dLeft" class="dbtn" aria-label="Назад"></button>
-        <button id="dRight" class="dbtn" aria-label="Вперёд"></button>
+        <button id="dLeft" class="dbtn" data-kinds="truck car tank heli plane" aria-label="Влево"></button>
+        <button id="dRight" class="dbtn" data-kinds="truck car tank heli plane" aria-label="Вправо"></button>
       </div>
       <div class="dname"><b id="driveName"></b><button id="dExit" class="ic sm" aria-label="Выйти"></button></div>
       <div class="dright">
-        <button id="dUp" class="dbtn sm tankonly" aria-label="Ствол вверх"></button>
-        <button id="dDown" class="dbtn sm tankonly" aria-label="Ствол вниз"></button>
-        <button id="dMg" class="dbtn act tankonly"></button>
-        <button id="dFire" class="dbtn act red tankonly"></button>
+        <button id="dUp" class="dbtn sm" data-kinds="tank heli plane turret" aria-label="Вверх"></button>
+        <button id="dDown" class="dbtn sm" data-kinds="tank heli plane turret" aria-label="Вниз"></button>
+        <button id="dMg" class="dbtn act" data-kinds="tank heli plane"></button>
+        <button id="dFire" class="dbtn act red" data-kinds="tank heli plane turret"></button>
       </div>
     </div>
 

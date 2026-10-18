@@ -460,7 +460,9 @@ export class UI {
     const pad = $('#drive');
     pad.classList.toggle('hidden', !v);
     if (!v) return;
-    pad.classList.toggle('tank', v.kind === 'tank');
+    for (const b of pad.querySelectorAll('[data-kinds]')) b.classList.toggle('hidden', !b.dataset.kinds.split(' ').includes(v.kind));
+    const fire = { tank: 'Пушка', heli: 'Ракеты', plane: 'Бомба', turret: 'Огонь' }[v.kind] || 'Огонь';
+    $('#dFire').innerHTML = icon('fire') + `<span>${fire}</span>`;
     $('#driveName').textContent = v.name;
   }
 

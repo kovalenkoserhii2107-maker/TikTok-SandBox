@@ -6,6 +6,7 @@ import { Explosive } from './entities/explosives.js';
 import { Vehicle } from './entities/vehicles.js';
 import { Button, Timer, Laser, Motor, Piston, Lamp, ShockPlate } from './entities/machines.js';
 import { Pool } from './entities/water.js';
+import { Helicopter, Plane, Turret } from './entities/aircraft.js';
 
 const rd = (type) => (sim, x, y, f) => new Ragdoll(sim, x, y, type, f);
 const pr = (id) => (sim, x, y, f) => new Prop(sim, x, y, id, f);
@@ -90,6 +91,9 @@ export const CATEGORIES = [
       { id: 'truck', name: 'Грузовик', desc: 'Нажми, чтобы сесть за руль. Кузов возит людей.', make: veh('truck') },
       { id: 'car', name: 'Легковушка', desc: 'Быстрая. Нажми, чтобы управлять.', make: veh('car') },
       { id: 'tank', name: 'Танк', desc: 'Пушка, пулемёт, гусеницы. Нажми, чтобы управлять.', make: veh('tank') },
+      { id: 'heli', name: 'Вертолёт', desc: 'Пулемёт и ракеты. Винт рубит всё, что попадёт в лопасти.', make: (s, x, y, f) => new Helicopter(s, x, y, f) },
+      { id: 'plane', name: 'Самолёт', desc: 'Разгонись для взлёта — подъёмная сила растёт со скоростью. Сбрасывает бомбы.', make: (s, x, y, f) => new Plane(s, x, y, f) },
+      { id: 'turret', name: 'Турель', desc: 'Пулемётная турель. Сама стреляет по зомби или управляется вручную.', make: (s, x, y, f) => new Turret(s, x, y, f) },
     ],
   },
   {

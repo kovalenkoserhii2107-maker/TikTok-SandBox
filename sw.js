@@ -21,6 +21,7 @@ const ASSETS = [
   './js/links.js',
   './js/entities/machines.js',
   './js/entities/water.js',
+  './js/entities/aircraft.js',
   './js/entities/base.js',
   './js/entities/ragdoll.js',
   './js/entities/props.js',

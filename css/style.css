@@ -256,7 +256,6 @@ body.slowmo-on::after {
 .dbtn.act svg { width: 26px; height: 26px; }
 .dbtn.red { background: radial-gradient(circle at 30% 30%, #ff6b5a, #b3150c); }
 .dbtn.on { background: var(--accent); transform: scale(0.94); }
-.drive:not(.tank) .tankonly { display: none; }
 body:has(.drive:not(.hidden)) .tools,
 body:has(.drive:not(.hidden)) .fab,
 body:has(.drive:not(.hidden)) .placebar { display: none; }

@@ -363,11 +363,18 @@ class Game {
       engineStop();
     }
     this.controlled = v;
+    this.sim.controlledEnt = v;
     this.ui.showDrive(v);
     if (v) {
       initAudio();
-      engineStart(v.kind);
-      this.ui.toast(v.kind === 'tank' ? 'Езда ◀ ▶, ствол ▲ ▼, огонь — «Пушка»' : 'Езда — кнопки ◀ ▶', 2400);
+      engineStart(v.kind === 'heli' || v.kind === 'plane' ? 'car' : v.kind);
+      const hints = {
+        tank: 'Езда ◀ ▶, ствол ▲ ▼, огонь — «Пушка»',
+        heli: '▲ — вверх, ▼ — вниз, ◀ ▶ — наклон и полёт. Не задень винтом!',
+        plane: '▶ — газ (разгонись), ▲ ▼ — рули высоты, «Бомба» — сброс',
+        turret: '▲ ▼ — наводка, «Огонь» — стрелять. Без управления сама бьёт по зомби',
+      };
+      this.ui.toast(hints[v.kind] || 'Езда — кнопки ◀ ▶', 2600);
     }
   }
 
