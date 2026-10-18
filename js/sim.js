@@ -27,6 +27,25 @@ export const MAT = {
 // Горючесть материалов (0 — не горит).
 export const FLAMMABLE = { wood: 1, plastic: 0.8, rubber: 0.7, flesh: 0.55, zombie: 0.6, bone: 0.15, melon: 0.05 };
 
+// «Плотность» воды в тех же единицах, что и тела (кг/м² в 2D).
+export const WATER_D = 140;
+
+export function bodyArea(b) {
+  let a = 0;
+  for (let f = b.getFixtureList(); f; f = f.getNext()) {
+    if (f.isSensor()) continue;
+    const s = f.getShape();
+    if (s.getType() === 'circle') a += Math.PI * s.getRadius() * s.getRadius();
+    else if (s.m_vertices) {
+      const vs = s.m_vertices;
+      let k = 0;
+      for (let i = 0; i < vs.length; i++) { const p = vs[i], q = vs[(i + 1) % vs.length]; k += p.x * q.y - q.x * p.y; }
+      a += Math.abs(k) / 2;
+    }
+  }
+  return a;
+}
+
 export const V = (x, y) => new pl.Vec2(x, y);
 export const polyShape = (pts) => new pl.Polygon(pts.map((p) => new pl.Vec2(p[0], p[1])));
 export const boxShape = (hw, hh, cx = 0, cy = 0, a = 0) => new pl.Box(hw, hh, new pl.Vec2(cx, cy), a);
@@ -96,6 +115,50 @@ export class Sim {
       const i = this.entities.indexOf(ent);
       if (i >= 0) this.entities.splice(i, 1);
     });
+  }
+
+  // ---------- Вода ----------
+  waterAt(x, y) {
+    for (const pool of this.waters) {
+      const w = pool.water;
+      if (x > w.x0 && x < w.x1 && y > w.top && y < w.bottom) return w;
+    }
+    return null;
+  }
+
+  // Плавучесть по Архимеду + сопротивление воды.
+  applyWater(h) {
+    const g = this.def.gravity;
+    for (const pool of this.waters) {
+      if (pool.removed) continue;
+      const w = pool.region();
+      const seen = new Set();
+      this.world.queryAABB(new pl.AABB(V(w.x0, w.top - 0.5), V(w.x1, w.bottom)), (fix) => {
+        const b = fix.getBody();
+        if (!b.isDynamic() || seen.has(b) || fix.isSensor()) return true;
+        seen.add(b);
+        const ud = b.getUserData();
+        if (!ud || !ud.ent) return true;
+        const a = bodyAABB(b);
+        const hgt = Math.max(0.02, a.uy - a.ly), wid = Math.max(0.02, a.ux - a.lx);
+        const fy = clamp((Math.min(a.uy, w.bottom) - Math.max(a.ly, w.top)) / hgt, 0, 1);
+        const fx = clamp((Math.min(a.ux, w.x1) - Math.max(a.lx, w.x0)) / wid, 0, 1);
+        const sub = fy * fx;
+        const was = !!ud.wet;
+        ud.wet = sub > 0.05;
+        if (sub <= 0) return true;
+        if (ud.area === undefined) ud.area = bodyArea(b);
+        const c = b.getWorldCenter();
+        const v = b.getLinearVelocity();
+        const F = WATER_D * ud.area * sub * g;
+        const drag = ud.area * sub * 55;
+        b.applyForce(V(-v.x * drag, -F - v.y * drag), V(c.x, c.y - (1 - fy) * hgt * 0.25), true);
+        b.applyTorque(-b.getAngularVelocity() * b.getInertia() * sub * 3, true);
+        if (!was && ud.wet && v.y > 2.5 && !this.silent) this.effects.splash(c.x, w.top, Math.min(1.5, v.y / 8) * Math.sqrt(wid));
+        if (sub > 0.35 && ud.fire > 0) this.extinguish(b);
+        return true;
+      });
+    }
   }
 
   // ---------- Огонь ----------
@@ -234,6 +297,7 @@ export class Sim {
     const h = dt / n;
     for (let i = 0; i < n; i++) {
       for (const e of this.entities) if (!e.removed) e.preStep(h);
+      if (this.waters.length) this.applyWater(h);
       this.inStep = true;
       this.world.step(h, 8, 3);
       this.inStep = false;

@@ -1,5 +1,8 @@
 // Частицы, следы на земле, трассеры, вспышки, ударные волны, ядерный гриб.
 import { rand, pick, clamp, TAU, len } from './util.js';
+import { sfx } from './audio.js';
+
+const sfxSplash = (pos, k) => sfx.splash(pos, k);
 
 const sprites = new Map();
 function softSprite(color, hard = 0) {
@@ -19,7 +22,7 @@ function softSprite(color, hard = 0) {
   return c;
 }
 
-const BLOOD = { blood: '#8a0b0b', zblood: '#3f5a12', oil: '#16161a', juice: '#d8344a' };
+const BLOOD = { blood: '#8a0b0b', zblood: '#3f5a12', oil: '#16161a', juice: '#d8344a', water: '#9fd8f0' };
 
 export class Effects {
   constructor(sim) {
@@ -81,6 +84,20 @@ export class Effects {
   drip(x, y, kind = 'blood') {
     if (!this.blood && kind !== 'oil') kind = 'oil';
     this.add({ type: 'drop', x, y, vx: rand(-0.2, 0.2), vy: rand(0, 0.5), life: 3, size: rand(0.018, 0.035), color: BLOOD[kind], kind });
+  }
+
+  splash(x, y, k = 1) {
+    for (let i = 0, n = this.n(14 * k + 4); i < n; i++) {
+      const a = -Math.PI / 2 + rand(-0.9, 0.9);
+      const s = rand(2, 6) * Math.min(1.6, k + 0.3);
+      this.add({ type: 'drop', x: x + rand(-0.3, 0.3) * k, y: y - 0.02, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.6, 1.2), size: rand(0.025, 0.05), color: BLOOD.water, kind: 'water' });
+    }
+    this.add({ type: 'smoke', x, y: y - 0.1, vx: 0, vy: -0.5, life: 0.5, size: 0.3 * k, grow: 0.8, g: 0, drag: 2, color: '#e8f7ff', alpha: 0.6 });
+    if (!this.sim.silent) sfxSplash({ x, y }, k);
+  }
+
+  bubble(x, y) {
+    this.add({ type: 'bubble', x, y, vx: rand(-0.2, 0.2), vy: rand(-1.2, -0.6), life: rand(0.5, 1.1), size: rand(0.015, 0.035), g: 0, color: '#e8f7ff' });
   }
 
   sparks(x, y, count = 8, speed = 1, dx = 0, dy = -1) {
@@ -245,7 +262,7 @@ export class Effects {
       }
       if (p.y > -p.size * 0.3 && p.type !== 'smoke' && p.type !== 'fire' && p.type !== 'flash') {
         if (p.type === 'drop') {
-          this.decal(p.x, p.z, p.size * rand(2.5, 4.5), p.color, 0.85);
+          if (p.kind !== 'water') this.decal(p.x, p.z, p.size * rand(2.5, 4.5), p.color, 0.85);
           continue;
         }
         p.y = -p.size * 0.3;
@@ -345,6 +362,12 @@ export class Effects {
           ctx.drawImage(softSprite(p.color, 0.15), sx - s, sy - s, s * 2, s * 2);
           break;
         }
+        case 'bubble':
+          ctx.globalAlpha = Math.min(1, lt * 2) * 0.8;
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(sx, sy, Math.max(1.2, s), 0, TAU); ctx.stroke();
+          break;
         case 'drop':
           ctx.globalAlpha = 1;
           ctx.fillStyle = p.color;

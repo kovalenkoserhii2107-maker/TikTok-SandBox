@@ -85,6 +85,9 @@ export class Ragdoll extends Entity {
     this.infected = false;
     this.onFireT = 0;
     this.shockT = 0;
+    this.oxygen = 100;
+    this.underwater = false;
+    this.swimming = false;
     this.team = null;
     this.punchT = 0;
     this.atkCd = rand(0.2, 0.6);
@@ -328,6 +331,14 @@ export class Ragdoll extends Entity {
       g.farmF = -0.5 * f; g.farmB = -0.5 * f;
       this.lean = 0.12 * f * (this.speed > 1.6 ? 1.6 : 1);
     }
+    if (this.swimming) {
+      // Барахтается в воде.
+      g.uarmF = f * (-2.4 + Math.sin(t * 7) * 1.1); g.uarmB = f * (-2.4 + Math.sin(t * 7 + 2) * 1.1);
+      g.farmF = -0.4 * f; g.farmB = -0.4 * f;
+      g.thighF = f * (-0.4 + 0.5 * Math.sin(t * 9)); g.thighB = f * (-0.4 + 0.5 * Math.sin(t * 9 + 3));
+      g.shinF = 0.5 * f; g.shinB = 0.5 * f;
+      return;
+    }
     if (this.poison > 0) {
       g.uarmF = f * (-1 + Math.sin(t * 23) * 1.2); g.uarmB = f * (-1 + Math.cos(t * 19) * 1.2);
       g.farmF = -1.2 * f; g.farmB = -1.2 * f;
@@ -458,6 +469,7 @@ export class Ragdoll extends Entity {
       chest.applyForceToCenter(V(F * 0.5, 0), true);
     }
     if (this.getUpT > 0) chest.applyForceToCenter(V(0, -this.M * this.sim.def.gravity * 0.8), true);
+    if (this.swimming && this.underwater) chest.applyForceToCenter(V(0, -this.M * this.sim.def.gravity * 0.35), true);
   }
 
   // ---------- Логика ----------
@@ -475,6 +487,24 @@ export class Ragdoll extends Entity {
     this.shockT -= dt;
     this.punchT -= dt;
     this.atkCd -= dt;
+    // Вода: дыхание, пузыри, утопление.
+    this.swimming = false;
+    if (this.sim.waters.length && !this.parts.head.gone) {
+      const hp = this.parts.head.body.getPosition();
+      const cp = this.parts.chest.body.getPosition();
+      this.underwater = !!this.sim.waterAt(hp.x, hp.y - 0.06);
+      const inWater = !!this.sim.waterAt(cp.x, cp.y);
+      if (this.underwater && T.blood) {
+        this.oxygen = Math.max(0, this.oxygen - dt * 9);
+        if (Math.random() < dt * (this.oxygen > 0 ? 3 : 10)) this.sim.effects.bubble(hp.x + 0.08 * this.facing, hp.y);
+        if (this.oxygen <= 0 && this.alive) {
+          this.damage(this.parts.chest, dt * 14, 'drown');
+          this.stun = Math.max(this.stun, 0.6);
+        }
+      } else this.oxygen = Math.min(100, this.oxygen + dt * 30);
+      this.swimming = inWater && this.alive && this.conscious && T.blood && !T.zombie && !T.noMuscles;
+    } else this.underwater = false;
+
     if (this.adrenaline > 0) {
       this.adrenaline -= dt;
       this.pain = 0;

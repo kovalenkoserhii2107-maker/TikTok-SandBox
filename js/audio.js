@@ -242,6 +242,10 @@ export const sfx = {
     if (!ready() || !throttle('zap', 80)) return;
     noise({ dur: 0.12, vol: 0.3, type: 'bandpass', freq: 5000, q: 4, pos });
   },
+  splash(pos, k = 1) {
+    if (!ready() || !throttle('splash', 80)) return;
+    noise({ dur: 0.35 + k * 0.2, vol: clamp(0.25 + k * 0.3, 0, 0.8), type: 'bandpass', freq: 900, freqEnd: 300, q: 0.6, pos });
+  },
   flame(pos) {
     if (!ready() || !throttle('flame', 90)) return;
     noise({ dur: 0.22, vol: 0.32, type: 'bandpass', freq: rand(350, 600), q: 0.8, attack: 0.02, pos });

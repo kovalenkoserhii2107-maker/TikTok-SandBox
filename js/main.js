@@ -169,7 +169,7 @@ class Game {
     const e = item.make(sim, x, Math.min(y, -0.05), f);
     e.spawnRef = { cat: item.cat, id: item.id, f };
     sim.add(e);
-    if (!o.noLift) {
+    if (!o.noLift && !e.permanentStatic) {
       const a = e.aabb();
       if (a.uy > -0.005) e.translate(0, -a.uy - 0.01);
     }

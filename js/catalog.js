@@ -5,6 +5,7 @@ import { Firearm, Melee } from './entities/weapons.js';
 import { Explosive } from './entities/explosives.js';
 import { Vehicle } from './entities/vehicles.js';
 import { Button, Timer, Laser, Motor, Piston, Lamp, ShockPlate } from './entities/machines.js';
+import { Pool } from './entities/water.js';
 
 const rd = (type) => (sim, x, y, f) => new Ragdoll(sim, x, y, type, f);
 const pr = (id) => (sim, x, y, f) => new Prop(sim, x, y, id, f);
@@ -159,6 +160,8 @@ CATEGORIES.splice(CATEGORIES.length - 1, 0, {
     { id: 'brickWall', name: 'Кирпичная стена', desc: 'Стена 1.8 × 3 м из отдельных блоков. Рушится от взрывов и ударов.', build: buildWall },
     { id: 'house', name: 'Дом', desc: 'Двухэтажный дом из блоков с перекрытиями. Можно заселить людей.', build: buildHouse },
     { id: 'crateTower', name: 'Башня из ящиков', desc: '12 ящиков пирамидой — снеси её.', build: buildTower },
+    { id: 'pool', name: 'Бассейн', desc: 'Вода 6 м: дерево всплывает, металл тонет, люди барахтаются и могут утонуть.', make: (s, x) => new Pool(s, x, 0, 'pool') },
+    { id: 'tank', name: 'Аквариум', desc: 'Стеклянный бак с водой 3 м. Стекло можно разбить.', make: (s, x) => new Pool(s, x, 0, 'tank') },
   ],
 });
 CATEGORIES.push({
