@@ -107,6 +107,67 @@ export const CATEGORIES = [
   },
 ];
 
+// Постройки собираются из блоков (каждый блок — отдельный объект, всё рушится).
+const B = { w: 0.6, h: 0.3, gap: 0.004 };
+function wallColumn(out, x, y0, rows, width = 1) {
+  for (let r = 0; r < rows; r++) {
+    const y = y0 - B.h / 2 - r * (B.h + B.gap);
+    if (width === 1) out.push(['wallBlock', x, y]);
+    else {
+      const odd = r % 2 === 1;
+      let cx = x - (width * B.w) / 2;
+      if (odd) { out.push(['halfBlock', cx + 0.15, y]); cx += 0.3; }
+      const n = odd ? width - 1 : width;
+      for (let i = 0; i < n; i++) { out.push(['wallBlock', cx + 0.3, y]); cx += B.w + B.gap; }
+      if (odd) out.push(['halfBlock', cx + 0.15, y]);
+    }
+  }
+  return y0 - rows * (B.h + B.gap);
+}
+
+function buildWall(x) {
+  const out = [];
+  wallColumn(out, x, 0, 10, 3);
+  return out;
+}
+
+function buildHouse(x) {
+  const out = [];
+  const half = 2.1;
+  let top = 0;
+  for (let floor = 0; floor < 2; floor++) {
+    const rows = floor === 0 ? 9 : 8;
+    wallColumn(out, x - half, top, rows);
+    top = wallColumn(out, x + half, top, rows);
+    out.push(['window', x - 1.1, top - 0.6 + rows * (B.h + B.gap) - 0.2]);
+    out.push(['slab', x, top - 0.12 - B.gap]);
+    top -= 0.24 + B.gap * 2;
+  }
+  return out;
+}
+
+function buildTower(x) {
+  const out = [];
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) out.push(['crate', x + (c - 1) * 1.01, -0.5 - r * 1.005]);
+  return out;
+}
+
+CATEGORIES.splice(CATEGORIES.length - 1, 0, {
+  id: 'build', name: 'Постройки', items: [
+    { id: 'brickWall', name: 'Кирпичная стена', desc: 'Стена 1.8 × 3 м из отдельных блоков. Рушится от взрывов и ударов.', build: buildWall },
+    { id: 'house', name: 'Дом', desc: 'Двухэтажный дом из блоков с перекрытиями. Можно заселить людей.', build: buildHouse },
+    { id: 'crateTower', name: 'Башня из ящиков', desc: '12 ящиков пирамидой — снеси её.', build: buildTower },
+  ],
+});
+CATEGORIES.push({
+  id: 'hidden', hidden: true, items: [
+    { id: 'wallBlock', name: 'Кирпичный блок', make: pr('wallBlock') },
+    { id: 'halfBlock', name: 'Полублок', make: pr('halfBlock') },
+    { id: 'slab', name: 'Перекрытие', make: pr('slab') },
+    { id: 'window', name: 'Окно', make: pr('window') },
+  ],
+});
+
 for (const c of CATEGORIES) for (const it of c.items) it.cat = c.id;
 
 export function findItem(catId, itemId) {

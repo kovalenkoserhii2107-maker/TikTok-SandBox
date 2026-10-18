@@ -1,5 +1,5 @@
 // Интерфейс: инструменты, каталог, меню, управление техникой, жесты.
-import { CATEGORIES } from './catalog.js';
+import { CATEGORIES, findItem } from './catalog.js';
 import { WORLDS } from './worlds.js';
 import { Sim, pl, V } from './sim.js';
 import { Renderer } from './render.js';
@@ -130,6 +130,7 @@ export class UI {
     // Табы каталога.
     const tabs = $('#catTabs');
     for (const c of CATEGORIES) {
+      if (c.hidden) continue;
       const b = document.createElement('button');
       b.textContent = c.name;
       b.dataset.cat = c.id;
@@ -321,9 +322,15 @@ export class UI {
     r.dpr = 1;
     const sim = new Sim(this.game.worldDef, { silent: true });
     try {
-      const e = it.make(sim, 0, -3, f);
-      sim.add(e);
-      const a = e.aabb();
+      const ents = it.build
+        ? it.build(0).map(([id, px, py]) => findItem(id === 'crate' ? 'props' : 'hidden', id).make(sim, px, py, 1))
+        : [it.make(sim, 0, -3, f)];
+      const a = { lx: Infinity, ly: Infinity, ux: -Infinity, uy: -Infinity };
+      for (const e of ents) {
+        sim.add(e);
+        const b = e.aabb();
+        a.lx = Math.min(a.lx, b.lx); a.ly = Math.min(a.ly, b.ly); a.ux = Math.max(a.ux, b.ux); a.uy = Math.max(a.uy, b.uy);
+      }
       const w = a.ux - a.lx, h = a.uy - a.ly;
       r.cam.s = Math.min((cv.width * 0.8) / w, (cv.height * 0.78) / h, 480);
       r.cam.x = (a.lx + a.ux) / 2;

@@ -133,6 +133,37 @@ export const PROPS = {
       ctx.beginPath(); ctx.moveTo(-w * 0.2, -h * 0.4); ctx.lineTo(-w * 0.2, -h * 0.1); ctx.stroke();
     },
   },
+  wallBlock: {
+    name: 'Кирпичный блок', w: 0.6, h: 0.3, mass: 38, mat: 'stone', color: '#b9583f', t: 0.9, hp: 120, breakDv: 10, impactK: 5, debris: 'stone', friction: 0.9, restitution: 0,
+    detail(ctx, w, h) {
+      ctx.strokeStyle = 'rgba(235,225,210,0.75)'; ctx.lineWidth = 0.02;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2, 0); ctx.lineTo(w / 2, 0);
+      ctx.moveTo(-w / 4, -h / 2); ctx.lineTo(-w / 4, 0);
+      ctx.moveTo(w / 4, 0); ctx.lineTo(w / 4, h / 2);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(235,225,210,0.9)'; ctx.lineWidth = 0.025;
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
+    },
+  },
+  halfBlock: {
+    name: 'Полублок', w: 0.3, h: 0.3, mass: 19, mat: 'stone', color: '#b9583f', t: 0.9, hp: 80, breakDv: 10, impactK: 5, debris: 'stone', friction: 0.9, restitution: 0,
+    detail(ctx, w, h) {
+      ctx.strokeStyle = 'rgba(235,225,210,0.8)'; ctx.lineWidth = 0.02;
+      ctx.beginPath(); ctx.moveTo(-w / 2, 0); ctx.lineTo(w / 2, 0); ctx.stroke();
+      ctx.lineWidth = 0.025; ctx.strokeRect(-w / 2, -h / 2, w, h);
+    },
+  },
+  slab: {
+    name: 'Перекрытие', w: 4.8, h: 0.24, mass: 380, mat: 'stone', color: '#a6a39c', t: 3, hp: 320, breakDv: 14, impactK: 4, debris: 'stone', friction: 0.9, restitution: 0,
+    detail(ctx, w, h) {
+      ctx.fillStyle = 'rgba(60,60,55,0.25)';
+      for (let x = -w / 2 + 0.6; x < w / 2; x += 1.2) ctx.fillRect(x, -h / 2, 0.03, h);
+    },
+  },
+  window: {
+    name: 'Окно', w: 0.08, h: 1.2, mass: 9, mat: 'glass', color: '#9fd6ef', t: 0.9, hp: 10, breakDv: 4, impactK: 6, debris: 'glass', alpha: true,
+  },
   platform: {
     name: 'Платформа (неподвижная)', w: 6, h: 0.35, mass: 600, mat: 'stone', color: '#8d8f94', t: 2, static: true,
     detail(ctx, w, h) {

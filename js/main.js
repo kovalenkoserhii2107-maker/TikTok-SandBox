@@ -183,6 +183,13 @@ class Game {
   undo() {
     while (this.history.length) {
       const e = this.history.pop();
+      if (Array.isArray(e)) {
+        const alive = e.filter((x) => !x.removed);
+        if (!alive.length) continue;
+        for (const x of alive) this.sim.remove(x);
+        this.ui.toast(`Отменено: ${e.name}`);
+        return true;
+      }
       if (e.removed) continue;
       if (this.controlled === e) this.control(null);
       if (this.drag && this.drag.ent === e) this.endDrag();
@@ -206,8 +213,20 @@ class Game {
     this.ui.markWorld();
   }
 
+  // Постройка из многих блоков: ставится на землю, отменяется целиком.
+  build(item, x) {
+    const parts = item.build(x);
+    const ents = parts.map(([id, px, py]) => this.place(findItem(id === 'crate' ? 'props' : 'hidden', id), px, py, 1, { noLift: true, noHistory: true }));
+    ents.name = item.name;
+    this.history.push(ents);
+    this.sim.effects.dust(x, -0.2, 8, 'rgba(255,255,255,0.6)', 0.4);
+    sfx.ui();
+    return ents;
+  }
+
   spawn(item, x, y) {
     const sim = this.sim;
+    if (item.build) return this.build(item, x);
     const e = this.place(item, x, y, this.placeFlip);
     sim.effects.dust(x, Math.min(y, -0.1), 3, 'rgba(255,255,255,0.6)', 0.2);
     sfx.ui();
