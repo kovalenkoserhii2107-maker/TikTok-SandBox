@@ -7,6 +7,7 @@ import { Vehicle } from './entities/vehicles.js';
 import { Button, Timer, Laser, Motor, Piston, Lamp, ShockPlate, Fan, Conveyor, Magnet } from './entities/machines.js';
 import { Pool } from './entities/water.js';
 import { makeLink } from './links.js';
+import { pl, V } from './sim.js';
 import { Helicopter, Plane, Turret } from './entities/aircraft.js';
 
 const rd = (type) => (sim, x, y, f) => new Ragdoll(sim, x, y, type, f);
@@ -211,6 +212,141 @@ function buildBunker(x) {
   out.push(['metalCrate', x, -0.5]);
   return out;
 }
+// Снайперская вышка: три яруса бетонных опор и перекрытий, всё сварено.
+function buildWatchtower(x) {
+  const out = [];
+  out.push(['concrete', x - 1.8, -0.3]); out.push(['concrete', x + 1.8, -0.3]);
+  out.push(['concrete', x - 1.8, -0.9]); out.push(['concrete', x + 1.8, -0.9]);
+  out.push(['concrete', x - 1.8, -1.5]); out.push(['concrete', x + 1.8, -1.5]);
+  out.push(['slab', x, -1.92]);
+  out.push(['concrete', x - 1.8, -2.34]); out.push(['concrete', x + 1.8, -2.34]);
+  out.push(['concrete', x - 1.8, -2.94]); out.push(['concrete', x + 1.8, -2.94]);
+  out.push(['slab', x, -3.36]);
+  out.push(['concrete', x - 1.8, -3.78]); out.push(['concrete', x + 1.8, -3.78]);
+  out.push(['concrete', x - 1.8, -4.38]); out.push(['concrete', x + 1.8, -4.38]);
+  out.push(['slab', x, -4.8]);
+  out.push(['crate', x - 0.55, -3.98]); out.push(['crate', x + 0.55, -3.98]);
+  return out;
+}
+function linkWatchtower(ents, sim) {
+  const weld = (a, la, b, lb) => makeLink(sim, 'weld', ents[a].main, la, ents[b].main, lb);
+  const up = { x: 0, y: -0.3 }, down = { x: 0, y: 0.3 };
+  // Ярусы: [опоры..., плита].
+  const tiers = [[0, 1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11], [12, 13, 14, 15, 16]];
+  for (const t of tiers) {
+    const slab = t[t.length - 1], cols = t.slice(0, -1);
+    for (let k = 0; k + 2 < cols.length; k++) weld(cols[k], up, cols[k + 2], down);
+    weld(cols[cols.length - 2], up, slab, { x: -1.8, y: 0.12 });
+    weld(cols[cols.length - 1], up, slab, { x: 1.8, y: 0.12 });
+  }
+  weld(6, { x: -1.8, y: -0.12 }, 7, down); weld(6, { x: 1.8, y: -0.12 }, 8, down);
+  weld(11, { x: -1.8, y: -0.12 }, 12, down); weld(11, { x: 1.8, y: -0.12 }, 13, down);
+}
+
+// Трёхэтажный дом: как двухэтажный, но выше и с двумя окнами на этаже.
+function buildApartment(x) {
+  const out = [];
+  const half = 2.1;
+  let top = 0;
+  for (let floor = 0; floor < 3; floor++) {
+    const rows = 7;
+    wallColumn(out, x - half, top, rows, 2);
+    top = wallColumn(out, x + half, top, rows, 2);
+    out.push(['window', x - 0.9, top - 0.6 + rows * (B.h + B.gap) - 0.2]);
+    out.push(['window', x + 0.9, top - 0.6 + rows * (B.h + B.gap) - 0.2]);
+    out.push(['slab', x, top - 0.12 - B.gap]);
+    top -= 0.24 + B.gap * 2;
+  }
+  return out;
+}
+
+// Ангар: высокие сварные стены и крыша из трёх плит — внутрь въезжает техника.
+function buildHangar(x) {
+  const out = [];
+  for (const side of [-1, 1]) for (let r = 0; r < 6; r++) out.push(['concrete', x + side * 5.4, -0.3 - r * 0.6]);
+  for (const dx of [-4.8, 0, 4.8]) out.push(['slab', x + dx, -3.72]);
+  return out;
+}
+function linkHangar(ents, sim) {
+  const weld = (a, la, b, lb) => makeLink(sim, 'weld', ents[a].main, la, ents[b].main, lb);
+  for (const k of [0, 6]) for (let r = 0; r < 5; r++) weld(k + r, { x: 0, y: -0.3 }, k + r + 1, { x: 0, y: 0.3 });
+  weld(5, { x: 0, y: -0.3 }, 12, { x: -0.6, y: 0.12 });
+  weld(11, { x: 0, y: -0.3 }, 14, { x: 0.6, y: 0.12 });
+  weld(12, { x: 2.4, y: 0 }, 13, { x: -2.4, y: 0 });
+  weld(13, { x: 2.4, y: 0 }, 14, { x: -2.4, y: 0 });
+}
+
+// Катапульта: рычаг на шарнире, груз на длинном плече, наковальня заморожена над коротким.
+// Разморозь наковальню — она рухнет на рычаг и швырнёт груз.
+function buildCatapult(x) {
+  const out = [];
+  out.push(['concrete', x - 0.6, -0.3]);
+  out.push(['concrete', x + 0.6, -0.3]);
+  // Ось рычага над стыком блоков: короткое плечо 1.1 м слева, длинное 2.3 м справа.
+  out.push(['lever', x + 0.6, -0.71]);
+  out.push(['crate', x + 2.0, -1.31]);
+  out.push(['anvil', x - 0.85, -3.8]);
+  return out;
+}
+function linkCatapult(ents, sim) {
+  makeLink(sim, 'weld', ents[0].main, { x: 0.6, y: 0 }, ents[1].main, { x: -0.6, y: 0 });
+  makeLink(sim, 'hinge', ents[0].main, { x: 0.6, y: -0.3 }, ents[2].main, { x: -0.6, y: 0.1 });
+  ents[4].main.setStatic();
+}
+
+// Качели: бетонная стойка, перекладина и сиденье на двух верёвках.
+function buildSwing(x) {
+  const out = [];
+  for (let r = 0; r < 4; r++) out.push(['concrete', x - 0.9, -0.3 - r * 0.6]);
+  out.push(['beam', x + 0.4, -2.53]);
+  out.push(['plank', x + 1.0, -0.7]);
+  return out;
+}
+function linkSwing(ents, sim) {
+  for (let r = 0; r < 3; r++) makeLink(sim, 'weld', ents[r].main, { x: 0, y: -0.3 }, ents[r + 1].main, { x: 0, y: 0.3 });
+  makeLink(sim, 'weld', ents[3].main, { x: 0, y: -0.3 }, ents[4].main, { x: -1.3, y: 0.125 });
+  makeLink(sim, 'rope', ents[4].main, { x: -0.2, y: 0.125 }, ents[5].main, { x: -0.8, y: 0 });
+  makeLink(sim, 'rope', ents[4].main, { x: 1.4, y: 0.125 }, ents[5].main, { x: 0.8, y: 0 });
+}
+
+// Пирамида из 10 взрывоопасных бочек: одна взорвётся — рванут все.
+function buildBarrelPyramid(x) {
+  const out = [];
+  const rows = [4, 3, 2, 1];
+  rows.forEach((n, r) => {
+    for (let i = 0; i < n; i++) out.push(['boom:barrel', x + (i - (n - 1) / 2) * 0.64, -0.46 - r * 0.93]);
+  });
+  return out;
+}
+
+// Пресс-ловушка: над шипами тяжёлый блок на мягкой пружине. Блок заморожен —
+// разморозь его, и он рухнет вниз и будет давить всё, что окажется под ним.
+function buildCrusher(x) {
+  const out = [];
+  out.push(['spikes', x, -0.2]);
+  for (const side of [-1, 1]) for (let r = 0; r < 8; r++) out.push(['concrete', x + side * 2.1, -0.3 - r * 0.6]);
+  out.push(['slab', x, -4.92]);
+  out.push(['concrete', x, -4.2]);
+  return out;
+}
+function linkCrusher(ents, sim) {
+  const weld = (a, la, b, lb) => makeLink(sim, 'weld', ents[a].main, la, ents[b].main, lb);
+  for (const k of [1, 9]) for (let r = 0; r < 7; r++) weld(k + r, { x: 0, y: -0.3 }, k + r + 1, { x: 0, y: 0.3 });
+  weld(8, { x: 0, y: -0.3 }, 17, { x: -2.1, y: 0.12 });
+  weld(16, { x: 0, y: -0.3 }, 17, { x: 2.1, y: 0.12 });
+  // Блок ходит по вертикальной направляющей и падает плашмя.
+  const slab = ents[17].main, block = ents[18].main;
+  const guide = sim.world.createJoint(new pl.PrismaticJoint({ enableLimit: true, lowerTranslation: -0.2, upperTranslation: 4.5 }, slab, block, block.getPosition(), V(0, 1)));
+  sim.addLink(guide, { type: 'guide', breakForce: 400000 });
+  block.setStatic();
+}
+
+// Блок постройки: 'id' ищется среди скрытых блоков и предметов, 'категория:id' — в категории.
+export function findPart(id) {
+  if (id.includes(':')) { const [c, i] = id.split(':'); return findItem(c, i); }
+  return findItem('hidden', id) || findItem('props', id);
+}
+
 function buildTower(x) {
   const out = [];
   for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) out.push(['crate', x + (c - 1) * 1.01, -0.5 - r * 1.005]);
@@ -220,7 +356,14 @@ function buildTower(x) {
 CATEGORIES.splice(CATEGORIES.length - 1, 0, {
   id: 'build', name: 'Постройки', items: [
     { id: 'brickWall', name: 'Кирпичная стена', desc: 'Стена 1.8 × 3 м из отдельных блоков. Рушится от взрывов и ударов.', build: buildWall },
-    { id: 'house', name: 'Дом', desc: 'Двухэтажный дом из блоков с перекрытиями. Можно заселить людей.', build: buildHouse },
+    { id: 'house', name: 'Двухэтажный дом', desc: 'Дом из блоков с перекрытиями и окнами. Можно заселить людей.', build: buildHouse },
+    { id: 'apartment', name: 'Трёхэтажный дом', desc: 'Три этажа с окнами и перекрытиями, стены в два кирпича.', build: buildApartment },
+    { id: 'watchtower', name: 'Снайперская вышка', desc: 'Три яруса на сварных бетонных опорах, наверху пост из ящиков. Подорви опоры — рухнет.', build: buildWatchtower, links: linkWatchtower },
+    { id: 'hangar', name: 'Складской ангар', desc: 'Пролёт 9,6 м и высота 3,6 м: внутрь заезжает грузовик или танк.', build: buildHangar, links: linkHangar },
+    { id: 'catapult', name: 'Катапульта', desc: 'Наковальня заморожена над рычагом. Подержи палец на ней → «Разморозить»: она рухнет на короткое плечо, и ящик полетит через ось.', build: buildCatapult, links: linkCatapult },
+    { id: 'swing', name: 'Качели', desc: 'Перекладина на бетонной стойке и сиденье на двух верёвках. Посади персонажа и раскачай.', build: buildSwing, links: linkSwing },
+    { id: 'barrelPyramid', name: 'Пирамида бочек', desc: '10 взрывоопасных бочек: подожги или выстрели в одну — рванут все.', build: buildBarrelPyramid },
+    { id: 'crusher', name: 'Пресс-ловушка', desc: 'Бетонный блок заморожен на направляющей над шипами. Подержи палец на нём → «Разморозить»: рухнет и раздавит всё внизу.', build: buildCrusher, links: linkCrusher },
     { id: 'crateTower', name: 'Башня из ящиков', desc: '12 ящиков пирамидой — снеси её.', build: buildTower },
     { id: 'pool', name: 'Бассейн', desc: 'Вода 6 м: дерево всплывает, металл тонет, люди барахтаются и могут утонуть.', make: (s, x) => new Pool(s, x, 0, 'pool') },
     { id: 'tank', name: 'Аквариум', desc: 'Стеклянный бак с водой 3 м. Стекло можно разбить.', make: (s, x) => new Pool(s, x, 0, 'tank') },
@@ -234,6 +377,7 @@ CATEGORIES.push({
     { id: 'wallBlock', name: 'Кирпичный блок', make: pr('wallBlock') },
     { id: 'halfBlock', name: 'Полублок', make: pr('halfBlock') },
     { id: 'slab', name: 'Перекрытие', make: pr('slab') },
+    { id: 'lever', name: 'Рычаг катапульты', make: pr('lever') },
     { id: 'window', name: 'Окно', make: pr('window') },
   ],
 });

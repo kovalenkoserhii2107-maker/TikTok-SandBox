@@ -175,6 +175,15 @@ export const PROPS = {
       }
     },
   },
+  lever: {
+    name: 'Рычаг катапульты', w: 3.4, h: 0.2, mass: 45, mat: 'wood', color: '#8d5a2b', t: 0.5, friction: 0.9,
+    detail(ctx, w, h) {
+      ctx.strokeStyle = 'rgba(60,35,15,0.6)'; ctx.lineWidth = 0.02;
+      for (let x = -w / 2 + 0.4; x < w / 2; x += 0.6) { ctx.beginPath(); ctx.moveTo(x, -h / 2); ctx.lineTo(x, h / 2); ctx.stroke(); }
+      ctx.fillStyle = '#5d4037';
+      ctx.fillRect(w / 2 - 0.12, -h / 2 - 0.12, 0.08, 0.12);
+    },
+  },
   anvil: {
     name: 'Наковальня', w: 0.85, h: 0.5, mass: 180, mat: 'metal', color: '#37474f', t: 0.85,
     detail(ctx, w, h) {
@@ -335,6 +344,8 @@ export class Prop extends Entity {
 
   onImpulse(myFix, otherFix, imp) {
     if (!isFinite(this.hp) || this.broken) return;
+    // Замороженное (статичное) тело имеет массу 0 — от ударов оно не страдает.
+    if (!this.main.isDynamic()) return;
     const dv = imp / this.main.getMass();
     const thr = this.def.breakDv ?? 9;
     if (dv > thr) this.damage((dv - thr) * (this.def.impactK ?? 8), 'blunt');

@@ -459,6 +459,8 @@ export class Explosive extends Entity {
   }
 
   onImpulse(myFix, otherFix, imp) {
+    // Замороженное (статичное) тело имеет массу 0 — от ударов оно не страдает.
+    if (!this.main.isDynamic()) return;
     const dv = imp / this.main.getMass();
     if (this.expId === 'bomb' && this.armed && dv > 3) this.detonate(0);
     if (this.expId === 'barrel' && dv > 16) this.detonate(0.05);

@@ -1,5 +1,5 @@
 // Интерфейс: инструменты, каталог, меню, управление техникой, жесты.
-import { CATEGORIES, findItem } from './catalog.js';
+import { CATEGORIES, findItem, findPart } from './catalog.js';
 import { WORLDS } from './worlds.js';
 import { Sim, pl, V } from './sim.js';
 import { Renderer } from './render.js';
@@ -323,8 +323,9 @@ export class UI {
     const sim = new Sim(this.game.worldDef, { silent: true });
     try {
       const ents = it.build
-        ? it.build(0).map(([id, px, py]) => (findItem('hidden', id) || findItem('props', id)).make(sim, px, py, 1))
+        ? it.build(0).map(([id, px, py]) => findPart(id).make(sim, px, py, 1))
         : [it.make(sim, 0, -3, f)];
+      if (it.build && it.links) it.links(ents, sim);
       const a = { lx: Infinity, ly: Infinity, ux: -Infinity, uy: -Infinity };
       for (const e of ents) {
         sim.add(e);
