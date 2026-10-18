@@ -89,7 +89,7 @@ export class Timer extends Machine {
   }
   toggle() { this.on = !this.on; this.t = this.interval; sfx.click(this.main.getPosition()); }
   menu() {
-    return [{ label: `Интервал: ${this.interval} с`, icon: '⏱️', fn: () => { const opts = [0.5, 1, 2, 3, 5, 10]; this.interval = opts[(opts.indexOf(this.interval) + 1) % opts.length]; this.t = this.interval; } }];
+    return [{ seg: true, label: 'Интервал', options: [0.5, 1, 2, 3, 5, 10], value: this.interval, fmt: (v) => v + ' с', fn: (v) => { this.interval = v; this.t = v; } }];
   }
   update(dt) {
     if (!this.on) return;

@@ -76,9 +76,11 @@ export class Sim {
     this.groupSeq = 1;
     this.shakeAmt = 0;
     this.flashAmt = 0;
-    this.halfWidth = 75;
+    this.halfWidth = 4000; // мир практически бесконечный по ширине
     this.effects = new Effects(this);
     this.onBodyDestroyed = null;
+    this.onEvent = null; // заметные события (взрывы, расчленение) — для повтора и кинокамеры
+    this.onStepped = null;
     this.burning = new Set();
     this.groundFires = [];
     this.wires = [];
@@ -105,6 +107,7 @@ export class Sim {
   // Потолок (космическая станция): статичная плита на высоте y.
   setCeiling(y) {
     if (this.ceilingFix) { this.ground.destroyFixture(this.ceilingFix); this.ceilingFix = null; }
+    this.ceilingY = y ?? null;
     if (y === undefined || y === null) return;
     this.ceilingFix = this.ground.createFixture(boxShape(this.halfWidth + 5, 5, 0, y - 5), {
       friction: 0.6, restitution: 0.1, filterCategoryBits: CAT.STATIC, userData: { mat: 'metal' },
@@ -325,6 +328,11 @@ export class Sim {
     }
     this.flush();
     this.effects.update(dt);
+    if (this.onStepped) this.onStepped(dt);
+  }
+
+  event(type, x, y, w = 1) {
+    if (this.onEvent && !this.silent) this.onEvent({ type, x, y, w, t: this.time });
   }
 
   // ---------- Связи (верёвки, сварка, застрявшие клинки) ----------
@@ -452,6 +460,7 @@ export class Sim {
     }
     this.shake(clamp(P * 7, 4, o.nuke ? 60 : 28));
     if (o.nuke) this.flashAmt = 1;
+    this.event(o.nuke ? 'nuke' : 'boom', x, y, o.nuke ? 100 : P * 4);
 
     const bodies = new Set();
     this.world.queryAABB(new pl.AABB(V(x - R, y - R), V(x + R, y + R)), (fix) => {

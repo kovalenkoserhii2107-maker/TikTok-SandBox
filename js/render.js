@@ -4,7 +4,6 @@ import { clamp, convexHull, shade, TAU } from './util.js';
 import { texPattern, TEX, MAT_TEX } from './textures.js';
 import { drawWires } from './links.js';
 
-const DCAM = 24; // расстояние камеры до плоскости физики (м)
 
 // Уровни графики.
 export const QUALITY = {
@@ -23,6 +22,8 @@ export class Renderer {
     this.W = 300;
     this.H = 150;
     this.cam = { x: 0, y: -4, s: 34 };
+    this.dcam = 24; // расстояние камеры до плоскости физики (м): меньше — сильнее перспектива
+    this.ghosts = false; // повтор: рисуем и уже удалённые объекты
     this.vpFrac = opts.vpFrac ?? 0.42;
     this.vp = { x: 150, y: 60 };
     this.shakeX = 0;
@@ -77,11 +78,11 @@ export class Renderer {
   }
 
   // Масштаб (px/м) на глубине z.
-  k(z) { return (this.cam.s * DCAM) / (DCAM + z); }
+  k(z) { return (this.cam.s * this.dcam) / (this.dcam + z); }
 
   // Проекция мировой точки в экранные (CSS) пиксели.
   P(x, y, z) {
-    const f = DCAM / (DCAM + z);
+    const f = this.dcam / (this.dcam + z);
     const s = this.cam.s * f;
     return [this.vp.x + (x - this.cam.x - this.shakeX) * s, this.vp.y + (y - this.cam.y - this.shakeY) * s];
   }
@@ -282,7 +283,7 @@ export class Renderer {
     const vx = this.vp.x, vy = this.vp.y;
     let drawn = 0;
     for (const e of sim.entities) {
-      if (e.noShadow || e.removed) continue;
+      if (e.noShadow || (e.removed && !this.ghosts)) continue;
       for (const v of e.visuals) {
         if (v.custom || v.hidden || v.noCast || !v.outline) continue;
         const b = v.body;
@@ -302,7 +303,7 @@ export class Renderer {
             const h = Math.max(0, -y);
             if (h < minH) minH = h;
             const gx = x + h * lx, gz = zf + h * lz;
-            const s = this.cam.s * DCAM / (DCAM + gz);
+            const s = this.cam.s * this.dcam / (this.dcam + gz);
             pts.push(vx + (gx - cx) * s, vy + (0 - cy) * s);
           }
         }
@@ -365,7 +366,7 @@ export class Renderer {
     const items = this.items;
     items.length = 0;
     for (const e of sim.entities) {
-      if (e.removed) continue;
+      if (e.removed && !this.ghosts) continue;
       for (const v of e.visuals) {
         if (v.hidden) continue;
         if (v.custom) {

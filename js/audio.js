@@ -3,6 +3,8 @@ import { clamp, rand } from './util.js';
 
 let ctx = null;
 let master = null;
+let comp = null;
+let recDest = null;
 let noiseBuf = null;
 let enabled = true;
 let rate = 1;
@@ -19,7 +21,7 @@ export function initAudio() {
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return;
   ctx = new AC();
-  const comp = ctx.createDynamicsCompressor();
+  comp = ctx.createDynamicsCompressor();
   comp.threshold.value = -14;
   comp.ratio.value = 6;
   master = ctx.createGain();
@@ -30,6 +32,17 @@ export function initAudio() {
   noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+}
+
+// Звук игры как MediaStream — для записи видео со звуком.
+export function getAudioStream() {
+  if (!ctx || !ctx.createMediaStreamDestination) return null;
+  if (!recDest) {
+    recDest = ctx.createMediaStreamDestination();
+    comp.connect(recDest);
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+  return recDest.stream;
 }
 
 export function setSoundEnabled(v) {

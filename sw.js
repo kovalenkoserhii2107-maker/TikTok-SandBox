@@ -1,5 +1,5 @@
 // Service worker: игра работает офлайн. Меняй VERSION при каждом обновлении.
-const VERSION = 'kaboom-v4';
+const VERSION = 'kaboom-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
   './css/style.css',
   './js/lib/planck.min.js',
   './js/main.js',
+  './js/media.js',
   './js/ui.js',
   './js/pwa.js',
   './js/sim.js',
@@ -21,6 +22,7 @@ const ASSETS = [
   './js/links.js',
   './js/entities/machines.js',
   './js/entities/water.js',
+  './js/entities/gore.js',
   './js/entities/aircraft.js',
   './js/entities/base.js',
   './js/entities/ragdoll.js',
